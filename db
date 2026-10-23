@@ -1,1 +1,173 @@
 
+USE master;
+GO
+
+-- ═══════════════════════════════════════════════════════════════════════
+-- 1. DROP DATABASE CŨ
+-- ═══════════════════════════════════════════════════════════════════════
+IF EXISTS (SELECT name FROM sys.databases WHERE name = N'Interact3D')
+BEGIN
+    PRINT N'⚠️  Database Interact3D đã tồn tại — đang xóa...';
+    ALTER DATABASE Interact3D SET SINGLE_USER WITH ROLLBACK IMMEDIATE;
+    DROP DATABASE Interact3D;
+    PRINT N'✓ Đã xóa database cũ';
+END
+GO
+
+-- ═══════════════════════════════════════════════════════════════════════
+-- 2. CREATE DATABASE
+-- ═══════════════════════════════════════════════════════════════════════
+CREATE DATABASE Interact3D;
+GO
+
+USE Interact3D;
+GO
+
+PRINT N'═══════════════════════════════════════════════════════════';
+PRINT N'  [1/4] TẠO SCHEMA — 3 BẢNG';
+PRINT N'═══════════════════════════════════════════════════════════';
+
+/* BẢNG 1: tbl_User */
+CREATE TABLE tbl_User (
+    Id              INT IDENTITY(1,1) PRIMARY KEY,
+    Username        NVARCHAR(50)  NOT NULL UNIQUE,
+    PasswordHash    NVARCHAR(255) NOT NULL,
+    Email           NVARCHAR(100) NULL,
+    DisplayName     NVARCHAR(100) NULL,
+    Role            NVARCHAR(20)  NOT NULL DEFAULT N'User'
+                    CONSTRAINT CK_User_Role CHECK (Role IN (N'User', N'Admin')),
+    AvatarUrl       NVARCHAR(255) NULL,
+    StorageQuotaMB  INT           NOT NULL DEFAULT 500,
+    StorageUsedMB   INT           NOT NULL DEFAULT 0,
+    IsActive        BIT           NOT NULL DEFAULT 1,
+    IsDeleted       BIT           NOT NULL DEFAULT 0,
+    CreatedAt       DATETIME      NOT NULL DEFAULT GETDATE(),
+    UpdatedAt       DATETIME      NOT NULL DEFAULT GETDATE()
+);
+GO
+
+/* BẢNG 2: tbl_Model3D */
+CREATE TABLE tbl_Model3D (
+    Id              INT IDENTITY(1,1) PRIMARY KEY,
+    UserId          INT           NULL,
+    Name            NVARCHAR(200) NOT NULL,
+    Description     NVARCHAR(1000) NULL,
+    FilePath        NVARCHAR(255) NOT NULL,
+    FileSizeMB      DECIMAL(10,2) NOT NULL DEFAULT 0,
+    ThumbnailUrl    NVARCHAR(255) NULL,
+    BoneStandard    NVARCHAR(30)  NULL
+                    CONSTRAINT CK_Model3D_BoneStandard
+                    CHECK (BoneStandard IS NULL OR BoneStandard IN (N'Mixamo', N'Generic', N'None')),
+    BoneCount       INT           NULL,
+    HasAnimation    BIT           NOT NULL DEFAULT 0,
+    IsSystem        BIT           NOT NULL DEFAULT 0,
+    IsPublic        BIT           NOT NULL DEFAULT 0,
+    IsDeleted       BIT           NOT NULL DEFAULT 0,
+    CreatedAt       DATETIME      NOT NULL DEFAULT GETDATE(),
+    UpdatedAt       DATETIME      NOT NULL DEFAULT GETDATE(),
+    CONSTRAINT FK_Model3D_User FOREIGN KEY (UserId)
+        REFERENCES tbl_User(Id) ON DELETE CASCADE
+);
+GO
+
+/* BẢNG 3: tbl_ModelPosition (ĐÃ FIX: Đổi ON DELETE NO ACTION để tránh lỗi Msg 1785) */
+CREATE TABLE tbl_ModelPosition (
+    Id              INT IDENTITY(1,1) PRIMARY KEY,
+    UserId          INT           NOT NULL,
+    ModelId         INT           NOT NULL,
+    PositionX       FLOAT         NOT NULL DEFAULT 0,
+    PositionY       FLOAT         NOT NULL DEFAULT 0,
+    PositionZ       FLOAT         NOT NULL DEFAULT 0,
+    RotationY       FLOAT         NOT NULL DEFAULT 0,
+    UpdatedAt       DATETIME      NOT NULL DEFAULT GETDATE(),
+    CONSTRAINT FK_ModelPosition_User FOREIGN KEY (UserId)
+        REFERENCES tbl_User(Id) ON DELETE CASCADE,
+    CONSTRAINT FK_ModelPosition_Model FOREIGN KEY (ModelId)
+        REFERENCES tbl_Model3D(Id) ON DELETE NO ACTION,
+    CONSTRAINT UQ_ModelPosition_UserModel UNIQUE (UserId, ModelId)
+);
+GO
+
+PRINT N'✓ Đã tạo đủ 3 bảng!';
+
+/* [2/4] TẠO INDEXES */
+PRINT N'═══════════════════════════════════════════════════════════';
+PRINT N'  [2/4] TẠO INDEXES';
+PRINT N'═══════════════════════════════════════════════════════════';
+
+-- USER
+CREATE INDEX IX_User_Username ON tbl_User(Username);
+CREATE INDEX IX_User_Email ON tbl_User(Email) WHERE Email IS NOT NULL;
+CREATE INDEX IX_User_Role ON tbl_User(Role);
+CREATE INDEX IX_User_IsActive ON tbl_User(IsActive) WHERE IsDeleted = 0;
+
+-- MODEL_3D
+CREATE INDEX IX_Model3D_UserId ON tbl_Model3D(UserId) WHERE UserId IS NOT NULL;
+CREATE INDEX IX_Model3D_IsSystem ON tbl_Model3D(IsSystem) WHERE IsDeleted = 0;
+CREATE INDEX IX_Model3D_IsPublic ON tbl_Model3D(IsPublic) WHERE IsPublic = 1 AND IsDeleted = 0;
+CREATE INDEX IX_Model3D_CreatedAt ON tbl_Model3D(CreatedAt DESC);
+
+-- MODEL_POSITION
+CREATE INDEX IX_ModelPosition_UserId ON tbl_ModelPosition(UserId);
+CREATE INDEX IX_ModelPosition_ModelId ON tbl_ModelPosition(ModelId);
+
+PRINT N'✓ Đã tạo toàn bộ indexes';
+
+/* [3/4] SEED DATA — USERS */
+PRINT N'═══════════════════════════════════════════════════════════';
+PRINT N'  [3/4] SEED DATA — USERS';
+PRINT N'═══════════════════════════════════════════════════════════';
+
+SET IDENTITY_INSERT tbl_User ON;
+
+INSERT INTO tbl_User (Id, Username, PasswordHash, Email, DisplayName, Role, StorageQuotaMB, IsActive)
+VALUES
+    (1, N'admin', N'JAvlGPq9JyTdtvBO6x2llnRI1+gxwIyPqCKAn3THIKk=',
+        N'admin@interact3d.local', N'Quản Trị Viên', N'Admin', 5000, 1),
+    (2, N'demo',  N'jZae727K08KaOmKSgOaGzww/XVqGr/PKEgIMkjrcbJI=',
+        N'demo@interact3d.local',  N'Demo User',    N'User',  500,  1);
+
+SET IDENTITY_INSERT tbl_User OFF;
+GO
+
+/* [4/4] SEED DATA — SYSTEM MODEL PLACEHOLDER */
+PRINT N'═══════════════════════════════════════════════════════════';
+PRINT N'  [4/4] SEED DATA — SYSTEM MODELS';
+PRINT N'═══════════════════════════════════════════════════════════';
+
+SET IDENTITY_INSERT tbl_Model3D ON;
+
+INSERT INTO tbl_Model3D (Id, UserId, Name, Description, FilePath, FileSizeMB,
+                         BoneStandard, BoneCount, HasAnimation, IsSystem, IsPublic)
+VALUES
+    (1, NULL,
+        N'Placeholder Capsule',
+        N'Model mặc định — primitive capsule dùng cho test',
+        N'/uploads/models/placeholder/capsule.glb',
+        0.01, N'None', 0, 0, 1, 1);
+
+SET IDENTITY_INSERT tbl_Model3D OFF;
+GO
+
+/* KIỂM TRA KẾT QUẢ (ĐÃ FIX: Dùng [RowCount]) */
+PRINT N'';
+PRINT N'═══════════════════════════════════════════════════════════';
+PRINT N'  ✅ HOÀN TẤT KHỞI TẠO DATABASE!';
+PRINT N'═══════════════════════════════════════════════════════════';
+
+SELECT 'tbl_User'          AS TableName, COUNT(*) AS [RowCount] FROM tbl_User
+UNION ALL
+SELECT 'tbl_Model3D',      COUNT(*) FROM tbl_Model3D
+UNION ALL
+SELECT 'tbl_ModelPosition', COUNT(*) FROM tbl_ModelPosition;
+GO
+
+USE Interact3D;
+GO
+
+UPDATE tbl_Model3D
+SET Name = N'Base Character',
+    FilePath = '/uploads/models/base/base.fbx',
+    BoneStandard = 'Mixamo'
+WHERE Id = 1;
+GO
