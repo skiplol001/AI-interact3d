@@ -1,0 +1,157 @@
+﻿@{
+    ViewData["Title"] = "Không Gian Tương Tác 3D";
+}
+
+<link rel="stylesheet" href="~/css/canvas-ui.css" asp-append-version="true" />
+
+<div id="canvas-container">
+    <canvas id="webgl-canvas"></canvas>
+
+    <!-- ═══════════════════════════════════════════════════════════
+         Header UI
+         ═══════════════════════════════════════════════════════════ -->
+    <header class="top-nav">
+        <div class="brand">
+            <span class="logo-dot"></span>
+            <strong>Interact3D</strong>
+        </div>
+        <div class="user-panel">
+            <span class="badge role-badge">@ViewBag.Role</span>
+            <span class="user-name">@ViewBag.DisplayName</span>
+            <a href="/Auth/Logout" class="btn-logout">Đăng xuất</a>
+        </div>
+    </header>
+
+    <!-- ═══════════════════════════════════════════════════════════
+         Panel trái — Kéo thả Box (DRAG-DROP)
+         ═══════════════════════════════════════════════════════════ -->
+    <div class="box-panel">
+        <div class="box-panel-title">
+            <span>📦</span>
+            <span>TẠO BOX</span>
+        </div>
+
+        <div class="box-panel-hint">
+            Kéo box vào sàn 3D để tạo
+        </div>
+
+        <div class="box-panel-grid">
+            <div class="box-item"
+                 draggable="true"
+                 data-color="#f59e0b"
+                 data-type="crate"
+                 title="Box gỗ">
+                📦
+            </div>
+            <div class="box-item"
+                 draggable="true"
+                 data-color="#10b981"
+                 data-type="crate"
+                 title="Box xanh">
+                📦
+            </div>
+            <div class="box-item"
+                 draggable="true"
+                 data-color="#3b82f6"
+                 data-type="crate"
+                 title="Box xanh dương">
+                📦
+            </div>
+            <div class="box-item"
+                 draggable="true"
+                 data-color="#ef4444"
+                 data-type="crate"
+                 title="Box đỏ">
+                📦
+            </div>
+            <div class="box-item"
+                 draggable="true"
+                 data-color="#8b5cf6"
+                 data-type="crate"
+                 title="Box tím">
+                📦
+            </div>
+            <div class="box-item"
+                 draggable="true"
+                 data-color="#ec4899"
+                 data-type="crate"
+                 title="Box hồng">
+                📦
+            </div>
+        </div>
+
+        <div class="box-panel-divider"></div>
+
+        <div class="box-panel-actions">
+            <button id="btn-clear-boxes" class="box-action-btn danger" title="Xoá tất cả box">
+                🗑️ Xoá hết
+            </button>
+            <button id="btn-spawn-test" class="box-action-btn" title="Spawn box ngẫu nhiên">
+                🎲 Random
+            </button>
+        </div>
+
+        <div class="box-panel-divider"></div>
+
+        <div class="box-panel-info">
+            <div class="info-row">
+                <span class="info-label">Số box:</span>
+                <span id="hud-box-count" class="info-val">0</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════════════
+         HUD Panel — thông tin toạ độ + trạng thái
+         ═══════════════════════════════════════════════════════════ -->
+    <div class="hud-panel">
+        <div class="hud-item">
+            <span class="label">Model:</span>
+            <span id="hud-model-name" class="val highlight">Đang nạp...</span>
+        </div>
+        <div class="hud-item">
+            <span class="label">Vị trí (X, Z):</span>
+            <span id="hud-coords" class="val">0.00, 0.00</span>
+        </div>
+        <div class="hud-item">
+            <span class="label">Trạng thái:</span>
+            <span id="hud-status" class="val">Đứng yên</span>
+        </div>
+        <div class="hud-item">
+            <span class="label">Đang mang:</span>
+            <span id="hud-carrying" class="val">—</span>
+        </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════════════
+         Bottom dock — Đổi model + lưu vị trí
+         ═══════════════════════════════════════════════════════════ -->
+    <div class="model-dock">
+        <label for="select-model">Đổi Model:</label>
+        <select id="select-model">
+            <option value="">-- Đang lấy danh sách --</option>
+        </select>
+        <button id="btn-save-pos" class="btn-action">💾 Lưu vị trí</button>
+        <button id="btn-reset-pos" class="btn-action secondary">🏠 Về gốc</button>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════════════
+         Instructions
+         ═══════════════════════════════════════════════════════════ -->
+    <div class="instruction-box">
+        <p>🖱️ <strong>Click trái sàn:</strong> Di chuyển nhân vật</p>
+        <p>📦 <strong>Click vào box:</strong> Đi tới và nhặt box</p>
+        <p>🎯 <strong>Click sàn khi đang mang box:</strong> Đi tới và đặt xuống</p>
+        <p>🎨 <strong>Kéo box từ panel trái:</strong> Tạo box mới trên sàn</p>
+        <p>🔄 <strong>Chuột phải / Kéo:</strong> Xoay camera</p>
+        <p>🔍 <strong>Lăn chuột:</strong> Zoom</p>
+    </div>
+</div>
+
+@section Scripts {
+    <script>
+        window.CURRENT_USER_ID = parseInt('@ViewBag.UserId') || 2;
+        window.AUTH_TOKEN = '@ViewBag.Token';
+    </script>
+    <script type="module" src="~/js/pages/home-3d.js" asp-append-version="true"></script>
+}

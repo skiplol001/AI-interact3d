@@ -1,0 +1,50 @@
+﻿@model Interact3D.DTOs.Model.UploadModelDto
+@{
+    ViewData["Title"] = "Tải Lên Model 3D";
+}
+
+<div style="max-width: 600px; margin: 40px auto; padding: 0 20px;">
+    <div style="background: #1e293b; border-radius: 12px; border: 1px solid #334155; padding: 28px;">
+        <h2 style="color: #38bdf8; margin-bottom: 8px;">Tải Lên Model 3D Mới</h2>
+        <p style="color: #94a3b8; font-size: 0.85rem; margin-bottom: 24px;">Hỗ trợ định dạng .GLB, .GLTF và .FBX (tối đa 50MB)</p>
+
+        <form asp-action="Upload" method="post" enctype="multipart/form-data">
+            @Html.AntiForgeryToken()
+            <div asp-validation-summary="All" style="color: #f87171; font-size: 0.85rem; margin-bottom: 16px;"></div>
+
+            <div style="margin-bottom: 16px;">
+                <label style="display: block; font-size: 0.85rem; color: #cbd5e1; margin-bottom: 6px;">Tên Model *</label>
+                <input asp-for="Name" style="width: 100%; padding: 8px 12px; background: #0f172a; border: 1px solid #475569; border-radius: 6px; color: white;" required />
+            </div>
+
+            <div style="margin-bottom: 16px;">
+                <label style="display: block; font-size: 0.85rem; color: #cbd5e1; margin-bottom: 6px;">Mô tả</label>
+                <textarea asp-for="Description" rows="3" style="width: 100%; padding: 8px 12px; background: #0f172a; border: 1px solid #475569; border-radius: 6px; color: white;"></textarea>
+            </div>
+
+            <div style="margin-bottom: 16px;">
+                <label style="display: block; font-size: 0.85rem; color: #cbd5e1; margin-bottom: 6px;">File 3D (.glb, .fbx) *</label>
+                <input asp-for="File" type="file" accept=".glb,.gltf,.fbx" style="width: 100%; padding: 8px 12px; background: #0f172a; border: 1px solid #475569; border-radius: 6px; color: white;" required />
+            </div>
+
+            <div style="margin-bottom: 16px;">
+                <label style="display: block; font-size: 0.85rem; color: #cbd5e1; margin-bottom: 6px;">Chuẩn Khung Xương (Bone Standard)</label>
+                <select asp-for="BoneStandard" style="width: 100%; padding: 8px 12px; background: #0f172a; border: 1px solid #475569; border-radius: 6px; color: white;">
+                    <option value="None">None (Không có xương / Vật thể tĩnh)</option>
+                    <option value="Mixamo">Mixamo (Tương thích Animation Mixamo)</option>
+                    <option value="Generic">Generic (Khác)</option>
+                </select>
+            </div>
+
+            <div style="margin-bottom: 24px;">
+                <label style="display: block; font-size: 0.85rem; color: #cbd5e1; margin-bottom: 6px;">Ảnh Thumbnail (Tùy chọn)</label>
+                <input asp-for="Thumbnail" type="file" accept="image/*" style="width: 100%; padding: 8px 12px; background: #0f172a; border: 1px solid #475569; border-radius: 6px; color: white;" />
+            </div>
+
+            <div style="display: flex; gap: 12px;">
+                <button type="submit" style="flex: 1; padding: 10px; background: #0284c7; color: white; border: none; border-radius: 6px; font-weight: 600; cursor: pointer;">Tải Lên</button>
+                <a href="/Admin/Index" style="padding: 10px 16px; background: #334155; color: white; text-decoration: none; border-radius: 6px; font-size: 0.9rem; display: flex; align-items: center;">Hủy</a>
+            </div>
+        </form>
+    </div>
+</div>

@@ -1,0 +1,158 @@
+﻿@model Interact3D.DTOs.Auth.RegisterRequest
+@{
+    ViewData["Title"] = "Đăng Ký - Interact3D";
+    Layout = null;
+}
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>@ViewData["Title"]</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+
+        body {
+            background: #0f172a;
+            color: #f8fafc;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+        }
+
+        .auth-card {
+            background: #1e293b;
+            border: 1px solid #334155;
+            border-radius: 12px;
+            padding: 2.5rem;
+            width: 100%;
+            max-width: 440px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+        }
+
+        .auth-title {
+            font-size: 1.5rem;
+            font-weight: 700;
+            margin-bottom: 0.5rem;
+            text-align: center;
+            color: #38bdf8;
+        }
+
+        .auth-subtitle {
+            font-size: 0.9rem;
+            color: #94a3b8;
+            text-align: center;
+            margin-bottom: 1.5rem;
+        }
+
+        .form-group {
+            margin-bottom: 1rem;
+        }
+
+        label {
+            display: block;
+            font-size: 0.85rem;
+            margin-bottom: 0.4rem;
+            color: #cbd5e1;
+        }
+
+        input[type="text"], input[type="password"], input[type="email"] {
+            width: 100%;
+            padding: 0.7rem 0.9rem;
+            border-radius: 6px;
+            border: 1px solid #475569;
+            background: #0f172a;
+            color: #f8fafc;
+            font-size: 0.95rem;
+            outline: none;
+        }
+
+        input:focus {
+            border-color: #38bdf8;
+        }
+
+        .btn-submit {
+            width: 100%;
+            padding: 0.75rem;
+            background: #0284c7;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.2s;
+            margin-top: 0.5rem;
+        }
+
+            .btn-submit:hover {
+                background: #0369a1;
+            }
+
+        .error-summary {
+            color: #f87171;
+            font-size: 0.85rem;
+            margin-bottom: 1rem;
+        }
+
+        .switch-link {
+            text-align: center;
+            margin-top: 1.5rem;
+            font-size: 0.85rem;
+            color: #94a3b8;
+        }
+
+            .switch-link a {
+                color: #38bdf8;
+                text-decoration: none;
+            }
+    </style>
+</head>
+<body>
+    <div class="auth-card">
+        <h1 class="auth-title">Interact3D</h1>
+        <p class="auth-subtitle">Đăng ký tài khoản người dùng mới</p>
+
+        <form asp-controller="Auth" asp-action="Register" method="post">
+            @Html.AntiForgeryToken()
+            <div asp-validation-summary="All" class="error-summary"></div>
+
+            <div class="form-group">
+                <label>Tên đăng nhập</label>
+                <input asp-for="Username" type="text" required autofocus />
+            </div>
+
+            <div class="form-group">
+                <label>Tên hiển thị</label>
+                <input asp-for="DisplayName" type="text" placeholder="Nguyễn Văn A" />
+            </div>
+
+            <div class="form-group">
+                <label>Email (Tùy chọn)</label>
+                <input asp-for="Email" type="email" placeholder="example@mail.com" />
+            </div>
+
+            <div class="form-group">
+                <label>Mật khẩu</label>
+                <input asp-for="Password" type="password" required />
+            </div>
+
+            <div class="form-group">
+                <label>Xác nhận mật khẩu</label>
+                <input asp-for="ConfirmPassword" type="password" required />
+            </div>
+
+            <button type="submit" class="btn-submit">Tạo Tài Khoản</button>
+        </form>
+
+        <div class="switch-link">
+            Đã có tài khoản? <a asp-controller="Auth" asp-action="Login">Đăng nhập ngay</a>
+        </div>
+    </div>
+</body>
+</html>
