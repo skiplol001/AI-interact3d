@@ -4,14 +4,15 @@
 
 import {
     normalizeVN, classifyIntent, isNarrativePrefix, LOOK_AROUND_PATTERN,
-    summarizeSceneAround, errorToUserMessage, showPopup // ⭐ Import showPopup
-} from './ai-shared.js?v=12';
+    summarizeSceneAround, errorToUserMessage, showPopup
+} from './ai-shared.js?v=21';
 import { logInput, logDecision, logSuccess, logBail, logError, logEmptyResponse } from './ai-debug.js?v=12';
-import { NOT_COMMAND_MSG } from './ai-command/ai-command-config.js?v=12';
-import { localParseCommand, vn } from './ai-command/ai-command-parser.js?v=12';
-import { planWithAI } from './ai-command/ai-command-planner.js?v=12';
+import { NOT_COMMAND_MSG } from './ai-command/ai-command-config.js?v=15';
+import { localParseCommand, vn } from './ai-command/ai-command-parser.js?v=13';
+import { planWithAI } from './ai-command/ai-command-planner.js?v=17'; // ⭐ Update v=17
 import { runPlan } from './ai-command/ai-command-executor.js?v=12';
-import { CURRENT_TOOLS } from './ai-command/ai-command-handlers.js?v=12';
+import { CURRENT_TOOLS } from './ai-command/ai-command-handlers.js?v=15';
+import { scoreInjectionAttempt } from './ai-chat/ai-chat-helpers.js?v=15'; // ⭐ Import Guard
 
 const COMMAND_VOCAB = /\b(di|chay|quay|xoay|nhat|lay|cam|dat|tha|xoa|tao|sinh|them|doi|thay|dem|xep|chong|luu|ve|dung|nhin|zoom|focus|mang|dua|nhac|bo|dich|teleport|spawn|walk|turn|stop|hop|box|b\d+|model|nhan vat|lui|tien|nang|ha|len|xuong|sang|phai|trai|truoc|sau|camera)\b/;
 
@@ -22,6 +23,16 @@ export async function handleCommand(aiTools, userText, options = {}) {
 
     const t0 = performance.now();
     logInput('command', userText);
+
+    // ⭐ GUARD: Chặn Input Injection
+    const injCheck = scoreInjectionAttempt(userText);
+    if (injCheck.blocked) {
+        logDecision('command', 'injectionBlocked', { score: injCheck.score });
+        const msg = "🤔 Mình không hiểu ý bạn, nói rõ hơn được không?";
+        onSay(msg, 'unclear', []);
+        showPopup(msg, 'unclear');
+        return { cmds: [], results: [], says: [msg] };
+    }
 
     let _logged = false;
     const logSuccessOnce = (preview) => {
@@ -46,8 +57,6 @@ export async function handleCommand(aiTools, userText, options = {}) {
 
         onSay(text, kind, opts, confidence);
         onStatus(`💬 ${text}`);
-
-        // ⭐ Gọi showPopup thay vì showCharacterMessage trực tiếp
         showPopup(text, kind);
     };
 

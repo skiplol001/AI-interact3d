@@ -1,10 +1,22 @@
 ﻿// ═══════════════════════════════════════════════════════════════
-// ai-command-handlers.js — Thực thi các hành động trên Scene
+// ai-command-handlers.js — v15 (Add playRPS Handler)
 // ═══════════════════════════════════════════════════════════════
 
-import { COLOR_VI, COLORS, BOX_SIZE_FALLBACK, MAX_SPAWN } from './ai-command-config.js';
-import { r2, colorInfo, findIds, vn, levenshtein } from './ai-command-parser.js';
-import { summarizeSceneAround } from '../ai-shared.js?v=12'; // ⭐ Import trực tiếp hàm này
+import { COLOR_VI, COLORS, BOX_SIZE_FALLBACK, MAX_SPAWN } from './ai-command-config.js?v=15';
+import { r2, colorInfo, findIds, vn, levenshtein } from './ai-command-parser.js?v=13';
+import { summarizeSceneAround } from '../ai-shared.js?v=21';
+
+// ⭐ helper lấy mode hiện tại
+function getCurrentMode() {
+    try {
+        const w = window.__currentChatMode;
+        if (['gentle', 'normal', 'savage'].includes(w)) return w;
+        const m = localStorage.getItem('ai_last_mode');
+        return ['gentle', 'normal', 'savage'].includes(m) ? m : 'normal';
+    } catch {
+        return 'normal';
+    }
+}
 
 // ═══════════════════════════════════════════════════════════════
 // SCENE HELPERS
@@ -93,11 +105,74 @@ export function bestModelMatch(list, name) {
     return best;
 }
 
-// ═══════════════════════════════════════════════════════════════
-// HANDLERS
-// ═══════════════════════════════════════════════════════════════
 const fail = (say, text) => { say(text, 'unclear'); return { abort: true }; };
 
+// ═══════════════════════════════════════════════════════════════
+// CORE MOVEMENT HANDLERS
+// ═══════════════════════════════════════════════════════════════
+
+function handleWalkTo(args, say, ctx) {
+    const x = Number(args?.x);
+    const z = Number(args?.z);
+    if (!Number.isFinite(x) || !Number.isFinite(z)) {
+        return fail(say, '⚠️ Tọa độ không hợp lệ.');
+    }
+    const mode = getCurrentMode();
+    const pos = `(${x.toFixed(1)}, ${z.toFixed(1)})`;
+    let text;
+    if (mode === 'gentle') text = `Ơ... mình đi tới ${pos} nha...`;
+    else if (mode === 'savage') text = `Đm, đi tới ${pos} đây...`;
+    else text = `Ok, đi tới ${pos}...`;
+    say(text, 'normal');
+    return { actions: [ctx.action] };
+}
+
+function handleWalkRelative(args, say, ctx) {
+    const dir = args?.direction;
+    const dist = args?.distance;
+    const dirMap = { forward: 'tới', backward: 'lùi', left: 'trái', right: 'phải' };
+    const dirText = dirMap[dir] || dir;
+    const distText = Number.isFinite(dist) ? ` ${dist}m` : '';
+    const mode = getCurrentMode();
+    let text;
+    if (mode === 'gentle') text = `Mình đi ${dirText}${distText} nha...`;
+    else if (mode === 'savage') text = `Đm, đi ${dirText}${distText} đây...`;
+    else text = `Đi ${dirText}${distText}...`;
+    say(text, 'normal');
+    return { actions: [ctx.action] };
+}
+
+function handleTurn(args, say, ctx) {
+    const dir = args?.direction;
+    const deg = args?.degrees;
+    const mode = getCurrentMode();
+    let text;
+    if (Number.isFinite(deg)) {
+        text = `Quay ${deg}°`;
+    } else {
+        const map = { left: 'Quay trái', right: 'Quay phải', back: 'Quay lại' };
+        text = map[dir] || `Quay ${dir}`;
+    }
+    if (mode === 'gentle') text += ' nha...';
+    else if (mode === 'savage') text = `Đm, ` + text.toLowerCase() + ' đây...';
+    else text += '...';
+    say(text, 'normal');
+    return { actions: [ctx.action] };
+}
+
+function handleLookAtCamera(args, say, ctx) {
+    const mode = getCurrentMode();
+    let text;
+    if (mode === 'gentle') text = 'Ơ... mình quay mặt về camera nha...';
+    else if (mode === 'savage') text = 'Đm, nhìn camera đây...';
+    else text = 'Quay mặt về camera...';
+    say(text, 'normal');
+    return { actions: [ctx.action] };
+}
+
+// ═══════════════════════════════════════════════════════════════
+// OTHER HANDLERS
+// ═══════════════════════════════════════════════════════════════
 function handleClearAllBoxes(args, say) {
     const bsys = getBsys();
     if (!bsys) { say('⚠️ Không truy cập box system.', 'unclear'); return null; }
@@ -233,7 +308,7 @@ function handleWalkToCamera(args, say) {
     const dz = camPos.z - from.z;
     const dist = Math.hypot(dx, dz);
 
-    const SAFE_DIST = 1.5;
+    const SAFE_DIST = 3.0;
 
     if (Math.abs(dist - SAFE_DIST) < 0.1) {
         say('🎯 Bạn đã ở khoảng cách vừa phải với camera rồi.', 'normal');
@@ -263,6 +338,21 @@ function handleWalkToPickup(args, say) {
             : args?.boxId ? `⚠️ Không tìm thấy box "${args.boxId}".` : '⚠️ Không có hộp nào trên sàn.');
     }
     return { actions: [{ tool: 'walkToPickup', args: { boxId: target.userData.id } }] };
+}
+
+// ⭐ THÊM HANDLER ĐÁ BOX
+function handleKickBox(args, say) {
+    const carried = carriedBox();
+    if (carried) return fail(say, '⚠️ Đang mang hộp rồi, đặt xuống trước đã nhé.');
+
+    const target = resolveBox(args || {});
+    if (!target) {
+        return fail(say, args?.color ? `⚠️ Không tìm thấy hộp ${COLOR_VI[args.color] || args.color} nào trên sàn.`
+            : args?.boxId ? `⚠️ Không tìm thấy box "${args.boxId}".` : '⚠️ Không có hộp nào trên sàn.');
+    }
+
+    say(`🦵 Đi tới đá hộp ${boxLabel(target)}...`, 'normal');
+    return { actions: [{ tool: 'kickBox', args: { boxId: target.userData.id } }] };
 }
 
 function needCarry(say) {
@@ -582,7 +672,7 @@ async function handleSwitchModel(args, say) {
 function handleListModels(args, say) {
     const list = getAvailableModels();
     const msg = list.length ? `🧍 Model có sẵn: ${list.join(', ')}.`
-        : '🧍 Chưa khai báo danh sách model (hãy đặt window.getCharacterModels). Bạn vẫn có thể gõ "đổi sang model <tên>".';
+        : '🧍 Chưa khai báo danh sách model. Bạn vẫn có thể gõ "đổi sang model <tên>".';
     say(msg, 'normal');
     return msg;
 }
@@ -594,16 +684,31 @@ function handleRepeatLast(args, say) {
 }
 
 function handleLookAround(args, say, ctx) {
-    // ⭐ FIX: Dùng hàm import trực tiếp từ ai-shared
     const summary = summarizeSceneAround(ctx.aiTools.getSceneSnapshot());
     say(summary, 'normal');
     return summary;
 }
 
+function handlePlayRPS(args, say) {
+    if (window.minigameRPS) {
+        // Không cần say gì vì Minigame sẽ tự bật UI và nói
+        window.minigameRPS.start();
+        return { abort: true };
+    } else {
+        say('⚠️ Minigame chưa được khởi tạo.', 'unclear');
+        return null;
+    }
+}
+
 // ═══════════════════════════════════════════════════════════════
-// EXPORT BẢNG HANDLERS
+// EXPORT
 // ═══════════════════════════════════════════════════════════════
 export const CLIENT_HANDLERS = {
+    walkTo: handleWalkTo,
+    walkRelative: handleWalkRelative,
+    turn: handleTurn,
+    lookAtCamera: handleLookAtCamera,
+
     lookAround: handleLookAround,
     clearAllBoxes: handleClearAllBoxes,
     removeBox: handleRemoveBox,
@@ -616,6 +721,7 @@ export const CLIENT_HANDLERS = {
     walkToCamera: handleWalkToCamera,
     walkToNearestColor: (a, say) => handleWalkToBox({ color: a?.color }, say),
     walkToPickup: handleWalkToPickup,
+    kickBox: handleKickBox,
     walkToDropNearCamera: handleDropNearCamera,
     walkToDropAt: handleDropAt,
     walkToDropAtNearest: handleDropAtNearest,
@@ -637,6 +743,7 @@ export const CLIENT_HANDLERS = {
     switchModel: handleSwitchModel,
     listModels: handleListModels,
     repeatLast: handleRepeatLast,
+    playRPS: handlePlayRPS,
 };
 
-export const NEEDS_IDLE = new Set(['spin', 'teleport', 'loadPosition', 'switchModel', 'walkToCamera']);
+export const NEEDS_IDLE = new Set(['spin', 'teleport', 'loadPosition', 'switchModel', 'walkToCamera', 'kickBox', 'playRPS']);

@@ -1,8 +1,26 @@
 ﻿// ═══════════════════════════════════════════════════════════════
-// CharacterController — State machine (Fix Snap Ground theo Pose)
+// character-controller.js — v11 (Fix Kick Physics & Timeout)
 // ═══════════════════════════════════════════════════════════════
 import * as THREE from 'https://esm.sh/three@0.160.0';
-import { getPoseBox } from './pose-utils.js'; // ⭐ Import helper mới
+import { getPoseBox } from './pose-utils.js';
+
+const SNAP_STATES = new Set([
+    'idle', 'walking', 'running', 'carryWalk', 'carryRun', 'carryIdle',
+    'picking', 'putting',
+]);
+
+const HARD_SNAP_STATES = new Set(['landing']);
+const NO_SNAP_STATES = new Set(['hanging', 'falling', 'surprised']);
+
+const SNAP_DEAD_ZONES = {
+    idle: 0.05, carryIdle: 0.05, walking: 0.05, running: 0.05,
+    carryWalk: 0.05, carryRun: 0.05, picking: 0.005, putting: 0.005,
+};
+
+const SNAP_SPEEDS = {
+    idle: 2, carryIdle: 2, walking: 6, running: 8,
+    carryWalk: 5, carryRun: 6, picking: 15, putting: 15,
+};
 
 export class CharacterController {
     constructor(characterRoot, actions, options = {}) {
@@ -11,17 +29,37 @@ export class CharacterController {
         this.state = 'idle';
         this.target = new THREE.Vector3();
         this.carriedBox = null;
+
         this.moveSpeed = options.moveSpeed ?? 3.5;
+        this.runSpeed = options.runSpeed ?? 8.0;
+        this.runThreshold = options.runThreshold ?? 4.0;
+
         this.floorMesh = options.floorMesh || null;
         this.boxSize = options.boxSize ?? 0.4;
         this._current = null;
         this._pendingPickup = null;
         this._pendingDrop = false;
         this._pendingNextPickup = null;
+
+        this._pendingKickBox = null;
+        this._kickTimeout = null; // ⭐ Fallback timeout cho Kick
+
         this._onStatusChange = options.onStatusChange || null;
         this._onCarryChange = options.onCarryChange || null;
 
         this._skipGroundSnap = false;
+        this._lockGroundY = false;
+        this._isScriptedMove = false;
+        this._landingTimeout = null;
+        this._surprisedTimeout = null;
+
+        this._walkingStartTs = 0;
+        this._walkingStuckThresholdMs = 8000;
+        this._arrivalThresholdXZ = 0.2;
+
+        this._hangingLoopDelay = null;
+        this._hangingLoopInterval = null;
+        this._hangingLoopMs = options.hangingLoopMs ?? 2800;
 
         this.APPROACH_DISTANCE = 0.9;
         this.CARRY_OFFSET_Z = 0.5;
@@ -65,12 +103,19 @@ export class CharacterController {
                 else if (e.action === actions.putdown) this._onPutdownDone();
                 else if (e.action === actions.surprise) this._onSurpriseDone();
                 else if (e.action === actions.landing) this._onLandingDone();
+                else if (e.action === actions.kick) this._onKickDone(); // ⭐ LẮNG NGHE
             });
         }
     }
 
     _playAnim(name, fade = 0.3) {
-        const next = this.actions[name];
+        let next = this.actions[name];
+        if (name === 'run' && !next) {
+            next = this.actions['walk'];
+            if (next) next.timeScale = 1.8;
+        } else if (name === 'walk' && next) {
+            next.timeScale = 1.0;
+        }
         if (!next) return;
         if (this._current === next) return;
         if (this._current) {
@@ -84,40 +129,65 @@ export class CharacterController {
     _setStatus(t) { if (this._onStatusChange) this._onStatusChange(t); }
     _notifyCarry() { if (this._onCarryChange) this._onCarryChange(this.carriedBox); }
 
-    // ⭐ SNAP GROUND (Dùng helper tính pose thực tế)
     snapToGround() {
-        if (!this.root) return;
+        if (!this.root || this._lockGroundY) return;
         const bbox = getPoseBox(this.root);
-        const offset = -bbox.min.y;
-        if (Math.abs(offset) > 0.005) {
-            this.root.position.y += offset;
-            console.log(`[CC] Snap ground: ${offset.toFixed(3)}m`);
+        const error = bbox.min.y;
+        if (Math.abs(error) > 0.001) this.root.position.y -= error;
+    }
+
+    _forceSnap() {
+        if (!this.root || this._lockGroundY) return;
+        if (this._isScriptedMove) return;
+        this.root.updateMatrixWorld(true);
+        const bbox = getPoseBox(this.root);
+        const error = bbox.min.y;
+        if (Math.abs(error) > 0.001) {
+            this.root.position.y -= error;
+            if (Math.abs(error) > 0.1) {
+                console.warn(`[CC] ForceSnap lệch lớn: ${error.toFixed(3)}m`);
+            }
         }
     }
 
     goTo(position) {
-        if (['hanging', 'falling', 'surprised', 'landing'].includes(this.state)) return;
+        if (['hanging', 'falling', 'surprised', 'landing', 'kicking'].includes(this.state)) return;
         this._skipGroundSnap = false;
+        this._lockGroundY = false;
+        this._isScriptedMove = false;
+        clearTimeout(this._landingTimeout);
+        clearTimeout(this._surprisedTimeout);
+        clearTimeout(this._kickTimeout);
         this.target.copy(position);
         this.target.y = 0;
         this._pendingPickup = null;
         this._pendingDrop = false;
         this._pendingNextPickup = null;
+        this._pendingKickBox = null;
+
+        const distXZ = Math.hypot(this.root.position.x - this.target.x, this.root.position.z - this.target.z);
+        const shouldRun = distXZ > this.runThreshold;
 
         if (this.carriedBox) {
-            this.state = 'carryWalk';
+            this.state = shouldRun ? 'carryRun' : 'carryWalk';
             this._playAnim('carryWalk');
-            this._setStatus('Đang mang box đi...');
+            this._setStatus(shouldRun ? 'Đang chạy (mang box)...' : 'Đang mang box đi...');
         } else {
-            this.state = 'walking';
-            this._playAnim('walk');
-            this._setStatus('Đang di chuyển...');
+            this.state = shouldRun ? 'running' : 'walking';
+            this._playAnim(shouldRun ? 'run' : 'walk');
+            this._setStatus(shouldRun ? 'Đang chạy...' : 'Đang di chuyển...');
         }
+        this._walkingStartTs = performance.now();
     }
 
     walkToPickup(boxMesh) {
-        if (this.carriedBox || ['hanging', 'falling', 'surprised', 'landing'].includes(this.state)) return;
+        if (this.carriedBox || ['hanging', 'falling', 'surprised', 'landing', 'kicking'].includes(this.state)) return;
         this._skipGroundSnap = false;
+        this._lockGroundY = false;
+        this._isScriptedMove = false;
+        clearTimeout(this._landingTimeout);
+        clearTimeout(this._surprisedTimeout);
+        clearTimeout(this._kickTimeout);
         const dir = new THREE.Vector3().subVectors(this.root.position, boxMesh.position);
         dir.y = 0;
         if (dir.lengthSq() < 0.01) dir.set(0, 0, 1);
@@ -132,23 +202,67 @@ export class CharacterController {
         this._pendingPickup = { box: boxMesh };
         this._pendingDrop = false;
         this._pendingNextPickup = null;
+        this._pendingKickBox = null;
         this._setStatus('Đi tới box...');
+        this._walkingStartTs = performance.now();
+
+        const lookAt = Math.atan2(-dir.x, -dir.z);
+        this.root.rotation.y = lookAt;
+    }
+
+    walkToKickBox(boxMesh) {
+        if (this.carriedBox || ['hanging', 'falling', 'surprised', 'landing', 'kicking'].includes(this.state)) return;
+        this._skipGroundSnap = false;
+        this._lockGroundY = false;
+        this._isScriptedMove = false;
+        clearTimeout(this._landingTimeout);
+        clearTimeout(this._surprisedTimeout);
+        clearTimeout(this._kickTimeout);
+
+        const dir = new THREE.Vector3().subVectors(this.root.position, boxMesh.position);
+        dir.y = 0;
+        if (dir.lengthSq() < 0.01) dir.set(0, 0, 1);
+        dir.normalize();
+
+        const approach = boxMesh.position.clone().addScaledVector(dir, 1.2);
+        approach.y = 0;
+
+        this.target.copy(approach);
+        this.state = 'walkToBox';
+        this._playAnim('walk');
+
+        this._pendingPickup = null;
+        this._pendingDrop = false;
+        this._pendingNextPickup = null;
+        this._pendingKickBox = boxMesh;
+
+        this._setStatus('Đi tới đá box...');
+        this._walkingStartTs = performance.now();
 
         const lookAt = Math.atan2(-dir.x, -dir.z);
         this.root.rotation.y = lookAt;
     }
 
     walkToDropAt(position, nextPickupBox = null) {
-        if (!this.carriedBox || ['hanging', 'falling', 'surprised', 'landing'].includes(this.state)) return;
+        if (!this.carriedBox || ['hanging', 'falling', 'surprised', 'landing', 'kicking'].includes(this.state)) return;
         this._skipGroundSnap = false;
+        this._lockGroundY = false;
+        this._isScriptedMove = false;
+        clearTimeout(this._landingTimeout);
+        clearTimeout(this._surprisedTimeout);
+        clearTimeout(this._kickTimeout);
         this.target.copy(position);
         this.target.y = 0;
-        this.state = 'carryWalk';
+
+        const distXZ = Math.hypot(this.root.position.x - this.target.x, this.root.position.z - this.target.z);
+        this.state = distXZ > this.runThreshold ? 'carryRun' : 'carryWalk';
         this._playAnim('carryWalk');
         this._pendingDrop = true;
         this._pendingPickup = null;
         this._pendingNextPickup = nextPickupBox;
-        this._setStatus('Đi tới vị trí đặt...');
+        this._pendingKickBox = null;
+        this._setStatus(this.state === 'carryRun' ? 'Đang chạy (mang box)...' : 'Đi tới vị trí đặt...');
+        this._walkingStartTs = performance.now();
     }
 
     grab() {
@@ -156,7 +270,21 @@ export class CharacterController {
         this._pendingPickup = null;
         this._pendingDrop = false;
         this._pendingNextPickup = null;
+        this._pendingKickBox = null;
         this._skipGroundSnap = true;
+        this._lockGroundY = false;
+        clearTimeout(this._landingTimeout);
+        clearTimeout(this._surprisedTimeout);
+        clearTimeout(this._kickTimeout);
+        this._stopHangingLoop();
+
+        this._surprisedTimeout = setTimeout(() => {
+            if (this.state === 'surprised') {
+                console.log('[CC] Surprised stuck → force hanging');
+                this._onSurpriseDone();
+            }
+        }, 2000);
+
         this.state = 'surprised';
         this._playAnim('surprise', 0.15);
         this._setStatus('Giật mình!');
@@ -164,13 +292,36 @@ export class CharacterController {
 
     _onSurpriseDone() {
         if (this.state !== 'surprised') return;
+        clearTimeout(this._surprisedTimeout);
+        this._surprisedTimeout = null;
         this.state = 'hanging';
         this._playAnim('hanging', 0.25);
         this._setStatus('Đang lơ lửng...');
+        this._startHangingLoop();
+    }
+
+    _startHangingLoop() {
+        this._stopHangingLoop();
+        this._hangingLoopDelay = setTimeout(() => {
+            if (this.state !== 'hanging') return;
+            if (window.AIReaction) window.AIReaction('hanging_complain');
+            this._hangingLoopInterval = setInterval(() => {
+                if (this.state !== 'hanging') { this._stopHangingLoop(); return; }
+                if (window.AIReaction) window.AIReaction('hanging_complain');
+            }, this._hangingLoopMs);
+        }, 1500);
+    }
+
+    _stopHangingLoop() {
+        clearTimeout(this._hangingLoopDelay);
+        clearInterval(this._hangingLoopInterval);
+        this._hangingLoopDelay = null;
+        this._hangingLoopInterval = null;
     }
 
     release() {
         if (this.state !== 'hanging') return;
+        this._stopHangingLoop();
         this.state = 'falling';
         this._playAnim('falling', 0.2);
         this._setStatus('Đang rơi...');
@@ -178,19 +329,39 @@ export class CharacterController {
 
     land() {
         this._skipGroundSnap = false;
+        this._lockGroundY = false;
+        this._isScriptedMove = false;
         this.state = 'landing';
         this._playAnim('landing', 0.1);
         this._setStatus('Va chạm đất!');
+        setTimeout(() => this._forceSnap(), 50);
+        setTimeout(() => this._forceSnap(), 300);
+        setTimeout(() => this._forceSnap(), 800);
+        clearTimeout(this._landingTimeout);
+        this._landingTimeout = setTimeout(() => {
+            if (this.state === 'landing') {
+                console.log('[CC] Landing timeout -> ép về idle');
+                this._onLandingDone();
+            }
+        }, 1500);
     }
 
     cancel() {
         this._pendingPickup = null;
         this._pendingDrop = false;
         this._pendingNextPickup = null;
+        this._pendingKickBox = null;
         this._skipGroundSnap = false;
+        this._lockGroundY = false;
+        this._isScriptedMove = false;
+        clearTimeout(this._landingTimeout);
+        clearTimeout(this._surprisedTimeout);
+        clearTimeout(this._kickTimeout);
+        this._stopHangingLoop();
+        this._walkingStartTs = 0;
         this.target.copy(this.root.position);
 
-        if (['walking', 'walkToBox', 'carryWalk'].includes(this.state)) {
+        if (['walking', 'running', 'walkToBox', 'carryWalk', 'carryRun', 'kicking'].includes(this.state)) {
             this.state = this.carriedBox ? 'carryIdle' : 'idle';
             this._playAnim(this.carriedBox ? 'carryIdle' : 'idle');
             this._setStatus(this.carriedBox ? 'Đang mang box' : 'Đứng yên');
@@ -204,7 +375,15 @@ export class CharacterController {
         this._pendingPickup = null;
         this._pendingDrop = false;
         this._pendingNextPickup = null;
+        this._pendingKickBox = null;
         this._skipGroundSnap = false;
+        this._lockGroundY = false;
+        this._isScriptedMove = false;
+        clearTimeout(this._landingTimeout);
+        clearTimeout(this._surprisedTimeout);
+        clearTimeout(this._kickTimeout);
+        this._stopHangingLoop();
+        this._walkingStartTs = 0;
         this.root.position.set(x, this.root.position.y, z);
         this.target.copy(this.root.position);
         this.state = this.carriedBox ? 'carryIdle' : 'idle';
@@ -227,6 +406,9 @@ export class CharacterController {
 
     _onLandingDone() {
         if (this.state !== 'landing') return;
+        clearTimeout(this._landingTimeout);
+        this._landingTimeout = null;
+        this._forceSnap();
         this.state = 'idle';
         this._playAnim('idle', 0.25);
         this._setStatus('Đứng yên');
@@ -243,6 +425,28 @@ export class CharacterController {
         this._playAnim('carryIdle');
         this._setStatus('Đang mang box');
         this._notifyCarry();
+    }
+
+    // ⭐ KHI ANIMATION ĐÁ CHẠY XONG HOẶC TIMEOUT
+    _onKickDone() {
+        clearTimeout(this._kickTimeout);
+        this._kickTimeout = null;
+
+        const box = this._pendingKickBox;
+        this._pendingKickBox = null;
+
+        if (box) {
+            const angle = this.root.rotation.y;
+            const forward = new THREE.Vector3(Math.sin(angle), 0, Math.cos(angle));
+            if (window.boxSystem && window.boxSystem.kickBox) {
+                window.boxSystem.kickBox(box, forward);
+            }
+        }
+
+        // ⭐ Luôn reset về idle dù có box hay không
+        this.state = 'idle';
+        this._playAnim('idle', 0.2);
+        this._setStatus('Đứng yên');
     }
 
     _onPutdownDone() {
@@ -267,16 +471,40 @@ export class CharacterController {
     }
 
     update(dt) {
-        if (['walking', 'walkToBox', 'carryWalk'].includes(this.state)) {
-            const dist = this.root.position.distanceTo(this.target);
-            const THRESHOLD = 0.15;
-            if (dist > THRESHOLD) {
-                const dir = new THREE.Vector3().subVectors(this.target, this.root.position).normalize();
-                this.root.position.addScaledVector(dir, this.moveSpeed * dt);
-                const targetRot = Math.atan2(dir.x, dir.z);
+        const MOVING_STATES = ['walking', 'running', 'walkToBox', 'carryWalk', 'carryRun'];
+        if (MOVING_STATES.includes(this.state)) {
+            const dx = this.root.position.x - this.target.x;
+            const dz = this.root.position.z - this.target.z;
+            const distXZ = Math.hypot(dx, dz);
+
+            if (distXZ > this._arrivalThresholdXZ) {
+                const inv = 1 / (distXZ || 1);
+                const dirX = -dx * inv;
+                const dirZ = -dz * inv;
+
+                let speed = this.moveSpeed;
+                if (this.state === 'running') speed = this.runSpeed;
+                else if (this.state === 'carryRun') speed = this.runSpeed * 0.8;
+
+                const step = Math.min(speed * dt, distXZ);
+                this.root.position.x += dirX * step;
+                this.root.position.z += dirZ * step;
+
+                const targetRot = Math.atan2(dirX, dirZ);
                 this.root.rotation.y = THREE.MathUtils.lerp(this.root.rotation.y, targetRot, 15 * dt);
             } else {
-                this.root.position.copy(this.target);
+                this.root.position.x = this.target.x;
+                this.root.position.z = this.target.z;
+                this.root.position.y = this.target.y;
+                this._onArrived();
+            }
+
+            if (this._walkingStartTs > 0 && performance.now() - this._walkingStartTs > this._walkingStuckThresholdMs) {
+                console.warn(`[CC] ⚠ Walking stuck >${this._walkingStuckThresholdMs}ms → force arrive`);
+                this._walkingStartTs = 0;
+                this.root.position.x = this.target.x;
+                this.root.position.z = this.target.z;
+                this.root.position.y = this.target.y;
                 this._onArrived();
             }
         }
@@ -287,36 +515,77 @@ export class CharacterController {
     _groundSnap(dt) {
         if (!this.floorMesh) return;
         if (this._skipGroundSnap) return;
-        if (!['idle', 'walking', 'carryWalk', 'carryIdle', 'picking', 'putting', 'landing', 'surprised'].includes(this.state)) return;
-        if (['hanging', 'falling'].includes(this.state)) return;
+        if (this._isScriptedMove) return;
+        if (this._lockGroundY) return;
+
+        if (NO_SNAP_STATES.has(this.state)) return;
+
+        if (HARD_SNAP_STATES.has(this.state)) {
+            this._forceSnap();
+            return;
+        }
+
+        if (!SNAP_STATES.has(this.state)) return;
+
+        if (this.state === 'idle' || this.state === 'carryIdle') {
+            const bbox = getPoseBox(this.root);
+            const error = bbox.min.y;
+            const deadZone = SNAP_DEAD_ZONES[this.state] ?? 0.05;
+            if (Math.abs(error) < deadZone) return;
+            const speed = SNAP_SPEEDS[this.state] ?? 2;
+            const factor = Math.min(speed * dt, 1);
+            this.root.position.y -= error * factor;
+            return;
+        }
 
         this.root.updateMatrixWorld(true);
         let minDist = Infinity;
+        let hitCount = 0;
+
         for (const foot of [this.leftFoot, this.rightFoot]) {
             if (!foot) continue;
             foot.getWorldPosition(this._tmpVec);
             this._raycaster.set(this._tmpVec, this._rayDown);
             const hits = this._raycaster.intersectObject(this.floorMesh);
-            if (hits.length > 0) minDist = Math.min(minDist, hits[0].distance);
+            if (hits.length > 0) {
+                minDist = Math.min(minDist, hits[0].distance);
+                hitCount++;
+            }
         }
 
-        if (minDist !== Infinity) {
-            const error = minDist - this.TARGET_ANKLE_HEIGHT;
-            const speed = ['picking', 'putting', 'landing', 'surprised'].includes(this.state) ? 30 : 12;
-            const adjust = -error * Math.min(speed * dt, 1);
-            this.root.position.y += adjust;
-            if (this.root.position.y < -0.1) this.root.position.y = 0; // Chốt an toàn
-        }
+        if (hitCount === 0 || minDist === Infinity) return;
+
+        const error = minDist - this.TARGET_ANKLE_HEIGHT;
+        const deadZone = SNAP_DEAD_ZONES[this.state] ?? 0.05;
+        if (Math.abs(error) < deadZone) return;
+
+        const speed = SNAP_SPEEDS[this.state] ?? 6;
+        const factor = Math.min(speed * dt, 1);
+        this.root.position.y -= error * factor;
+
+        if (this.root.position.y < -0.3) this.root.position.y = -0.3;
+        if (this.root.position.y > 0.5) this.root.position.y = 0.5;
     }
 
     _onArrived() {
+        this._walkingStartTs = 0;
         if (this.state === 'walkToBox' && this._pendingPickup) {
             this.state = 'picking';
             this._playAnim('pickup', 0.15);
             this._setStatus('Đang nhặt box...');
             return;
         }
-        if (this.state === 'carryWalk' && this._pendingDrop) {
+        if (this.state === 'walkToBox' && this._pendingKickBox) {
+            this.state = 'kicking';
+            this._playAnim('kick', 0.15);
+            this._setStatus('Đang đá...');
+
+            // ⭐ FALLBACK: Nếu sau 1.5s animation không báo finished, tự động kết thúc
+            clearTimeout(this._kickTimeout);
+            this._kickTimeout = setTimeout(() => this._onKickDone(), 1500);
+            return;
+        }
+        if ((this.state === 'carryWalk' || this.state === 'carryRun') && this._pendingDrop) {
             this.state = 'putting';
             this._playAnim('putdown', 0.15);
             this._setStatus('Đang đặt box xuống...');
@@ -372,20 +641,29 @@ export class CharacterController {
 
     getStateText() {
         const map = {
-            idle: 'Đứng yên', walking: 'Đang đi bộ', walkToBox: 'Đi tới box...',
-            picking: 'Đang nhặt...', carryIdle: 'Đang mang box', carryWalk: 'Đang mang box đi',
-            putting: 'Đang đặt xuống...', surprised: 'Giật mình!', hanging: 'Đang lơ lửng',
-            falling: 'Đang rơi...', landing: 'Tiếp đất...',
+            idle: 'Đứng yên', walking: 'Đang đi bộ', running: 'Đang chạy',
+            walkToBox: 'Đi tới box...', picking: 'Đang nhặt...',
+            carryIdle: 'Đang mang box', carryWalk: 'Đang mang box đi', carryRun: 'Đang chạy (mang box)',
+            putting: 'Đang đặt xuống...', surprised: 'Giật mình!',
+            hanging: 'Đang lơ lửng', falling: 'Đang rơi...', landing: 'Tiếp đất...',
+            kicking: 'Đang đá...'
         };
         return map[this.state] || this.state;
     }
 
     isBusy() {
-        return ['picking', 'putting', 'surprised', 'hanging', 'falling', 'landing'].includes(this.state);
+        return ['picking', 'putting', 'surprised', 'hanging', 'falling', 'landing', 'kicking'].includes(this.state);
     }
 
     dispose() {
         if (this._current) this._current.stop();
+        clearTimeout(this._landingTimeout);
+        clearTimeout(this._surprisedTimeout);
+        clearTimeout(this._kickTimeout);
+        this._stopHangingLoop();
+        this._landingTimeout = null;
+        this._surprisedTimeout = null;
+        this._kickTimeout = null;
         this.carriedBox = null;
     }
 }

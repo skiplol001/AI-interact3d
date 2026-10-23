@@ -2,7 +2,7 @@
 // ai-vision-handler.js — Xử lý gửi ảnh cho AI (Image Vision)
 // ═══════════════════════════════════════════════════════════════
 
-import { MODEL_CHAIN, askGroq, getTimeContext, getPrefs, prefsToPrompt, formatReply } from './ai-shared.js?v=11';
+import { MODEL_CHAIN, askGroq, getTimeContext, getPrefs, prefsToPrompt, formatReply } from './ai-shared.js?v=20';
 import { logInput, logDecision, logSuccess, logError } from './ai-debug.js';
 
 // Prompt riêng cho chế độ Vision

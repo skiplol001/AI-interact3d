@@ -1,16 +1,40 @@
 ﻿// ═══════════════════════════════════════════════════════════════
-// ai-command-planner.js — Giao tiếp AI + Safety Net (Options)
+// ai-command-planner.js — v17 (Shared Sanitizer)
 // ═══════════════════════════════════════════════════════════════
 
-import { ACTION_TOOLS, TOOL_INDEX, COMMAND_PROMPT, DIRS, COLORS, COLOR_VI } from './ai-command-config.js';
-import { vn, r2, colorFromWord } from './ai-command-parser.js';
+import { ACTION_TOOLS, TOOL_INDEX, COMMAND_PROMPT, DIRS, COLORS, COLOR_VI } from './ai-command-config.js?v=15';
+import { vn, r2, colorFromWord } from './ai-command-parser.js?v=13';
 import {
     getBsys, getCtrl, allBoxes, carriedBox, findBoxById,
     normBoxId, getSavedPositions, getAvailableModels
-} from './ai-command-handlers.js';
-import { MODEL_CHAIN, askGroq, parseGroqResponse } from '../ai-shared.js?v=12';
+} from './ai-command-handlers.js?v=15';
+import { MODEL_CHAIN, askGroq, parseGroqResponse, sanitizeStringField, sanitizeSceneContext } from '../ai-shared.js?v=21';
 import { logEmptyResponse } from '../ai-debug.js?v=12';
-import { memory } from './ai-command-executor.js';
+import { memory } from './ai-command-executor.js?v=12';
+
+// ═══════════════════════════════════════════════════════════════
+// ⭐ ANTI-INJECTION: Validate tool calls (destructive protection)
+// ═══════════════════════════════════════════════════════════════
+
+const DESTRUCTIVE_TOOLS = new Set([
+    'clearAllBoxes',
+    'removeBox',
+    'removeBoxesByColor',
+    'recolorBoxesByColor',
+]);
+
+const DESTRUCTIVE_INTENT_PATTERNS = {
+    clearAllBoxes: /\b(xóa hết|xoa het|dọn hết|don het|xóa tất cả|xoa tat ca|clear all|delete all|xóa sạch|xoa sach|dọn sạch|don sach|xóa toàn bộ|xoa toan bo)\b/i,
+    removeBox: /\b(xóa|xoa|delete|remove|bỏ|bo|dẹp|dep|dọn|don|loại|loai)\b/i,
+    removeBoxesByColor: /\b(xóa|xoa|delete|remove|bỏ|bo|dẹp|dep|dọn|don|loại|loai)\b/i,
+    recolorBoxesByColor: /\b(đổi màu|doi mau|recolor|sơn|son|tô màu|to mau|thay màu|thay mau|đổi|doi|change)\b/i,
+};
+
+function hasDestructiveIntent(userText, toolName) {
+    const pattern = DESTRUCTIVE_INTENT_PATTERNS[toolName];
+    if (!pattern) return true;
+    return pattern.test(String(userText || ''));
+}
 
 // ═══════════════════════════════════════════════════════════════
 // 1. BUILD AI CONTEXT
@@ -48,11 +72,14 @@ export function buildAiContext(aiTools) {
         ctx.camera = { x: r2(window.camera.position.x), z: r2(window.camera.position.z) };
     }
 
-    let json = JSON.stringify(ctx);
+    // ⭐ SANITIZE TRƯỚC KHI JSON.stringify
+    const sanitized = sanitizeSceneContext(ctx);
+
+    let json = JSON.stringify(sanitized);
     if (json.length < 5000) {
         const { character: _c, ...rest } = snapRest;
         const extra = JSON.stringify(rest);
-        if (extra.length < 1500) json = JSON.stringify({ ...ctx, scene: rest });
+        if (extra.length < 1500) json = JSON.stringify({ ...sanitized, scene: rest });
     }
     return json;
 }
@@ -91,68 +118,48 @@ function extractPlan(message) {
 }
 
 // ═══════════════════════════════════════════════════════════════
-// 3. ⭐ SAFETY NET (Tự động điền Options nếu AI quên)
+// 3. SAFETY NET (Auto-inject options)
 // ═══════════════════════════════════════════════════════════════
 function injectOptionsIfMissing(plan) {
     return plan.map(action => {
         if (action.tool !== 'unclear') return action;
-
-        // Nếu đã có options rồi thì bỏ qua
         if (action.args?.options?.length > 0) return action;
 
         const text = (action.args?.text || '').toLowerCase();
         const newOptions = [];
 
-        // 1. Hỏi về xóa hộp
         if (/\b(xóa|xoa|remove|delete)\b/.test(text) && /\b(hộp|hop|box)\b/.test(text)) {
             const currentColors = [...new Set(allBoxes().map(b => b.userData.colorName))];
             if (currentColors.length > 0) {
                 newOptions.push("Xóa tất cả");
                 currentColors.forEach(c => newOptions.push(`Xóa hộp ${COLOR_VI[c] || c}`));
             }
-        }
-        // 2. Hỏi về chọn hộp (nhặt/đặt/di chuyển)
-        else if (/\b(hộp|hop|box)\b/.test(text) && /\b(nào|nao|which)\b/.test(text)) {
+        } else if (/\b(hộp|hop|box)\b/.test(text) && /\b(nào|nao|which)\b/.test(text)) {
             const boxes = allBoxes().slice(0, 5);
             boxes.forEach(b => newOptions.push(`${b.userData.id} (${COLOR_VI[b.userData.colorName] || b.userData.colorName})`));
-        }
-        // 3. Hỏi về đổi model
-        else if (/\b(model|nhân vật|nhan vat)\b/.test(text) && /\b(nào|nao|which)\b/.test(text)) {
+        } else if (/\b(model|nhân vật|nhan vat)\b/.test(text) && /\b(nào|nao|which)\b/.test(text)) {
             const models = getAvailableModels();
             models.slice(0, 4).forEach(m => newOptions.push(m));
-        }
-        // 4. Hỏi về hướng đi
-        else if (/\b(hướng|huong|direction)\b/.test(text)) {
+        } else if (/\b(hướng|huong|direction)\b/.test(text)) {
             newOptions.push("Trái", "Phải", "Tiến", "Lùi");
-        }
-        // 5. Hỏi về màu sắc
-        else if (/\b(màu|mau|color)\b/.test(text) && /\b(nào|nao|which)\b/.test(text)) {
+        } else if (/\b(màu|mau|color)\b/.test(text) && /\b(nào|nao|which)\b/.test(text)) {
             newOptions.push("Đỏ", "Xanh lá", "Xanh dương", "Vàng", "Tím", "Hồng");
-        }
-        // 6. Fallback cuối cùng: Hỏi Có/Không
-        else if (/\b(nào|nao|which|gì|gi|what)\b/.test(text)) {
+        } else if (/\b(nào|nao|which|gì|gi|what)\b/.test(text)) {
             newOptions.push("Đúng vậy", "Không phải");
         }
 
-        // Nếu có options mới -> gán và hạ confidence xuống 0.4
         if (newOptions.length > 0) {
-            console.log(`[SafetyNet] Inject options cho unclear: ${text.substring(0, 40)}...`);
             return {
                 ...action,
-                args: {
-                    ...action.args,
-                    options: newOptions,
-                    confidence: 0.4  // Đảm bảo UI hiển thị nút
-                }
+                args: { ...action.args, options: newOptions, confidence: 0.4 }
             };
         }
-
         return action;
     });
 }
 
 // ═══════════════════════════════════════════════════════════════
-// 4. SANITIZE PLAN
+// 4. SANITIZE PLAN (+ destructive validation)
 // ═══════════════════════════════════════════════════════════════
 const DIR_ALIASES = {
     forward: ['tien', 'truoc', 'thang', 'ahead', 'front', 'di len', 'len'],
@@ -164,7 +171,6 @@ function coerceEnum(key, v, allowed) {
     const s = vn(v);
     if (allowed.includes(String(v))) return String(v);
     if (allowed.includes(s)) return s;
-
     if (/color/i.test(key)) {
         const c = colorFromWord(s);
         return c && allowed.includes(c) ? c : null;
@@ -183,12 +189,18 @@ function coerceEnum(key, v, allowed) {
     return null;
 }
 
-export function sanitizePlan(raw) {
+export function sanitizePlan(raw, userText = '') {
     const plan = [], problems = [];
     for (const a of raw) {
         const name = a?.tool || a?.name;
         const schema = TOOL_INDEX[name];
         if (!schema) { problems.push(`Tool không tồn tại: "${name}"`); continue; }
+
+        // ⭐ Validate destructive intent
+        if (DESTRUCTIVE_TOOLS.has(name) && !hasDestructiveIntent(userText, name)) {
+            problems.push(`Tool "${name}" là destructive nhưng user không yêu cầu rõ → reject`);
+            continue;
+        }
 
         let args = a.args;
         if (typeof args === 'string') {
@@ -201,6 +213,20 @@ export function sanitizePlan(raw) {
             if (!(k in props)) delete args[k];
         }
 
+        // ⭐ Validate boxId format sớm (tránh "b1; clearAllBoxes")
+        for (const boxKey of ['boxId', 'bottomId', 'topId']) {
+            if (args[boxKey] !== undefined) {
+                const normalized = normBoxId(args[boxKey]);
+                if (!/^b\d+$/.test(normalized)) {
+                    problems.push(`${name}.${boxKey}="${args[boxKey]}" sai format (phải bN)`);
+                    delete args[boxKey];
+                } else {
+                    args[boxKey] = normalized;
+                }
+            }
+        }
+
+        // ⭐ Validate string fields không chứa ký tự injection
         for (const [k, def] of Object.entries(props)) {
             if (args[k] === undefined || args[k] === null || args[k] === '') {
                 delete args[k];
@@ -213,12 +239,13 @@ export function sanitizePlan(raw) {
             } else if (def.enum) {
                 const v = coerceEnum(k, args[k], def.enum);
                 if (v) args[k] = v;
-                else { problems.push(`${name}.${k}="${args[k]}" không hợp lệ (cho phép: ${def.enum.join('/')})`); delete args[k]; }
+                else { problems.push(`${name}.${k}="${args[k]}" không hợp lệ`); delete args[k]; }
             } else if (def.type === 'string') {
-                args[k] = String(args[k]).trim();
+                args[k] = sanitizeStringField(String(args[k]), 100);
+                if (!args[k]) delete args[k];
             } else if (def.type === 'array') {
                 if (Array.isArray(args[k])) {
-                    args[k] = args[k].map(String).filter(Boolean);
+                    args[k] = args[k].map(x => sanitizeStringField(String(x), 60)).filter(Boolean);
                 } else {
                     delete args[k];
                 }
@@ -282,10 +309,9 @@ export async function planWithAI(apiKey, aiTools, userText) {
         try { raw = await ask(userText, 0.25); } catch (e) { console.warn('[CMD] Retry error:', e); }
     }
 
-    // ⭐ Áp dụng Safety Net để tự động điền options nếu AI quên
     raw = injectOptionsIfMissing(raw);
 
-    let { plan, problems } = sanitizePlan(raw);
+    let { plan, problems } = sanitizePlan(raw, userText);
     problems = [...problems, ...checkBoxRefs(plan)];
 
     // Retry tầng 1
@@ -293,8 +319,8 @@ export async function planWithAI(apiKey, aiTools, userText) {
         try {
             const feedback = `${userText}\n\n[PHẢN HỒI HỆ THỐNG] Kế hoạch trước có lỗi: ${problems.join('; ')}. Hãy trả lại kế hoạch đúng, chỉ dùng id/màu/model có trong scene.`;
             let r2raw = await ask(feedback, 0.1);
-            r2raw = injectOptionsIfMissing(r2raw); // ⭐ Safety Net lần 2
-            const r2p = sanitizePlan(r2raw);
+            r2raw = injectOptionsIfMissing(r2raw);
+            const r2p = sanitizePlan(r2raw, userText);
             const p2 = [...r2p.problems, ...checkBoxRefs(r2p.plan)];
             if (r2p.plan.length && p2.length <= problems.length) {
                 plan = r2p.plan;
@@ -305,10 +331,9 @@ export async function planWithAI(apiKey, aiTools, userText) {
         }
     }
 
-    // Retry tầng 2 (Minimal context)
+    // Retry tầng 2 (minimal context)
     if (problems.length && plan.length === 0) {
         try {
-            console.warn('[CMD] Retry tầng 2 (minimal context)...');
             const ctxObj = JSON.parse(sceneCtx);
             const minimalCtx = JSON.stringify({
                 character: ctxObj.character,
@@ -317,8 +342,8 @@ export async function planWithAI(apiKey, aiTools, userText) {
             });
             const feedback2 = `${userText}\n\n[LỖI NGHIÊM TRỌNG] Plan trước bị lỗi: ${problems.join('; ')}. Hãy thử lại với cách hiểu đơn giản nhất.`;
             let r3raw = await ask(feedback2, 0.15, minimalCtx);
-            r3raw = injectOptionsIfMissing(r3raw); // ⭐ Safety Net lần 3
-            const r3p = sanitizePlan(r3raw);
+            r3raw = injectOptionsIfMissing(r3raw);
+            const r3p = sanitizePlan(r3raw, userText);
             if (r3p.plan.length) {
                 const p3 = [...r3p.problems, ...checkBoxRefs(r3p.plan)];
                 if (p3.length <= problems.length) {

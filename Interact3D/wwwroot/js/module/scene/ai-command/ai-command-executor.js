@@ -2,14 +2,14 @@
 // ai-command-executor.js — Quản lý hàng đợi & Nút bấm lựa chọn
 // ═══════════════════════════════════════════════════════════════
 
-import { CLIENT_HANDLERS, NEEDS_IDLE, allBoxes } from './ai-command-handlers.js';
-import { COLOR_VI } from './ai-command-config.js';
+import { CLIENT_HANDLERS, NEEDS_IDLE, allBoxes } from './ai-command-handlers.js?v=15';
+import { COLOR_VI } from './ai-command-config.js?v=15';
 
 // ═══════════════════════════════════════════════════════════════
 // STATE
 // ═══════════════════════════════════════════════════════════════
 export const memory = { history: [], lastPlan: null };
-window.__memory = memory;
+window.__memory = memory; // Cho phép handler truy cập để làm lại lệnh
 
 const NON_REPEATABLE = new Set([
     'repeatLast', 'stop', 'listModels', 'listPositions',
@@ -17,7 +17,8 @@ const NON_REPEATABLE = new Set([
 ]);
 
 const BUSY_STATES = [
-    'walking', 'walkToBox', 'carryWalk', 'picking', 'putting',
+    'walking', 'running', 'carryWalk', 'carryRun', 'walkToBox',
+    'picking', 'putting',
     'surprised', 'hanging', 'falling', 'landing',
 ];
 
@@ -39,7 +40,7 @@ export async function waitForCharacterReady(aiTools, timeoutMs = 8000) {
 }
 
 // ═══════════════════════════════════════════════════════════════
-// RUN BATCH
+// RUN BATCH (Gửi cho Scene thực thi)
 // ═══════════════════════════════════════════════════════════════
 async function runBatch(aiTools, batch, maxRetries = 2) {
     let lastErr = null;
@@ -58,7 +59,7 @@ async function runBatch(aiTools, batch, maxRetries = 2) {
 }
 
 // ═══════════════════════════════════════════════════════════════
-// EXECUTE PLAN
+// EXECUTE PLAN (Vòng lặp chính)
 // ═══════════════════════════════════════════════════════════════
 export async function executePlan(aiTools, actions, say) {
     const queue = actions.map(a => ({ tool: a.tool, args: { ...(a.args || {}) } }));
@@ -86,12 +87,13 @@ export async function executePlan(aiTools, actions, say) {
         const a = queue.shift();
         const handler = CLIENT_HANDLERS[a.tool];
 
+        // Nếu không có handler custom → đưa vào batch để Scene tự xử lý (VD: walkTo, walkRelative)
         if (!handler) {
             batch.push(a);
             continue;
         }
 
-        await flush();
+        await flush(); // Đảm bảo các bước trước đã xong (trạng thái mới nhất)
         if (NEEDS_IDLE.has(a.tool)) await waitForCharacterReady(aiTools, 8000);
 
         let out;
@@ -107,6 +109,7 @@ export async function executePlan(aiTools, actions, say) {
         if (!out) continue;
 
         if (out.msg) {
+            // Nếu handler trả về options (VD: đổi model sai tên), hiển thị nút bấm
             if (out.options?.length) {
                 say(out.msg, 'unclear', out.options);
             } else {

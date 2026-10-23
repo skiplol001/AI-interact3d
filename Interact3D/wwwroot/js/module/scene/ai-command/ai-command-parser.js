@@ -1,8 +1,8 @@
 ﻿// ═══════════════════════════════════════════════════════════════
-// ai-command-parser.js — Phân tích câu lệnh Local (Fix Split)
+// ai-command-parser.js — Phân tích câu lệnh Local
 // ═══════════════════════════════════════════════════════════════
 
-import { COLORS, COLOR_VI, MAX_SPAWN } from './ai-command-config.js';
+import { COLORS, COLOR_VI, MAX_SPAWN } from './ai-command-config.js?v=15';
 
 // ═══════════════════════════════════════════════════════════════
 // TEXT HELPERS
@@ -29,6 +29,7 @@ const COLOR_WORDS = {
 const BARE_COLOR_WORDS = { do: 'red', luc: 'green', vang: 'amber', tim: 'purple', hong: 'pink' };
 const COLOR_CTX = new Set(['hop', 'box', 'mau', 'cai', 'con', 'thanh', 'thung']);
 
+// ⭐ HÀM colorInfo (đã fix, đảm bảo export)
 export function colorInfo(t, loose = false) {
     const colors = [];
     let ambiguous = false;
@@ -127,12 +128,12 @@ const AMB_BLUE = () => U('🤔 "Xanh" là xanh lá hay xanh dương?', ["Xanh l�
 const POS_STOP = new Set(['nay', 'do', 'day', 'hien', 'tai', 'vua', 'roi', 'cu', 'truoc', 'da', 'luu']);
 
 const HERE_RE = /\b(ve (day|camera|cam)|ve cho (toi|minh|tao)|ve phia (toi|minh)|ve ben (toi|minh)|lai day|toi day|den day|truoc mat|ve minh|ve toi|cho toi|cho minh|lai cho toi)\b/;
-const CAMERA_RE = /\b(lai gan|ve|toi|den|di toi|lui lai)\s+(camera|cam|man hinh)\b|\b(camera|cam)\b/;
 
-// ⭐ HÀM TÁCH CÂU ĐÃ ĐƯỢC FIX (Hỗ trợ dấu chấm)
+const WALK_TO_CAMERA_RE = /\b(lai gan|ve|toi|den|di toi|di den|lui lai|tien lai|buoc toi|chay toi)\s+(camera|cam|man hinh)\b/;
+const LOOK_AT_CAMERA_RE = /\b(nhin|quay mat|quay ve|quay lai|huong|ngoanh|xoay mat|nhin ve|huong ve)\s*(ve|vao|toi|sang|phia)?\s*(camera|cam|man hinh)\b/;
+
 function splitClauses(raw) {
     const holes = [];
-    // Bảo vệ số thập phân (VD: 3.5, 1,5) và các cụm trong ngoặc
     let s = String(raw || '')
         .replace(/\([^)]*\)/g, (m) => `\u0002${holes.push(m) - 1}\u0003`)
         .replace(/(\d)[.,](\d)/g, '$1\u0001$2');
@@ -140,7 +141,6 @@ function splitClauses(raw) {
     const CONJ = 'và sau đó|va sau do|xong rồi|xong roi|rồi sau đó|roi sau do|sau đó|sau do|tiếp theo|tiep theo|kế đó|ke do|sau đấy|rồi thì|rồi|roi|xong|và|va|and then|then';
     s = s.replace(new RegExp(`^\\s*(?:${CONJ})\\s+`, 'i'), '');
 
-    // ⭐ CẬP NHẬT: Thêm dấu chấm (.) vào regex tách
     const parts = s.split(new RegExp(`\\s*(?:[,;\\.]|->|=>|→)\\s*|\\s+(?:${CONJ})\\s+`, 'i'));
 
     return parts
@@ -243,7 +243,11 @@ function parseClause(raw, t) {
         if (/^(tha|buong|release|drop|roi)( ra| xuong| nhan vat| no| tay)*$/.test(t) || /\b(tha xuong|buong ra|tha ra|cho roi)\b/.test(t)) return [{ tool: 'release', args: {} }];
     }
 
-    if (CAMERA_RE.test(t) && !/\b(dat|tha|bo|vut|nem)\b/.test(t)) {
+    if (LOOK_AT_CAMERA_RE.test(t) || /^nhin thang$/.test(t) || /^nhin toi$/.test(t) || /^nhin minh$/.test(t)) {
+        return [{ tool: 'lookAtCamera', args: {} }];
+    }
+
+    if (WALK_TO_CAMERA_RE.test(t) && !/\b(dat|tha|bo|vut|nem|nhin|quay mat|huong|ngoanh)\b/.test(t)) {
         return [{ tool: 'walkToCamera', args: {} }];
     }
 
@@ -255,7 +259,6 @@ function parseClause(raw, t) {
             if (all) return [{ tool: 'clearAllBoxes', args: {} }];
             if (/\bgan nhat|xa nhat|dau tien|cuoi cung\b/.test(t)) return null;
 
-            // ⭐ SỬA: Lấy danh sách hộp động từ Scene
             const currentColors = [...new Set((window.boxSystem?.boxes || []).map(b => b.userData.colorName))];
             const colorOpts = currentColors.map(c => `Xoá hộp ${COLOR_VI[c] || c}`);
             const opts = ["Xoá tất cả", ...colorOpts];
@@ -358,11 +361,6 @@ function parseClause(raw, t) {
     if (/^(nhat|lay|cam|be)$/.test(t)) return [{ tool: 'walkToPickup', args: {} }];
 
     if (/\b(quay|xoay)\s+(sang\s+)?trang\b/.test(t)) return U('🤔 Bạn muốn quay sang trái hay phải? (có phải gõ nhầm "trang"?)', ["Trái", "Phải"]);
-    if (!/\b(xoay|quay)\s+camera\b/.test(t) &&
-        (/\b(nhin|quay|xoay|huong|ngoanh)\b.*\b(camera|man hinh)\b/.test(t) ||
-            /^(nhin|quay mat|quay lai|quay)\s*(ve|vao|toi)?\s*(phia\s*)?(toi|minh|tao)$/.test(t) || /^nhin thang$/.test(t))) {
-        return [{ tool: 'lookAtCamera', args: {} }];
-    }
 
     if (/\b(zoom|focus|nhin vao|tap trung|soi vao|chuyen camera|camera (vao|toi|den|sang))\b/.test(t)) {
         if (ids.length) return [{ tool: 'focusOn', args: { boxId: ids[0] } }];

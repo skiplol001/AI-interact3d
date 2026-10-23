@@ -1,5 +1,5 @@
 ﻿// ═══════════════════════════════════════════════════════════════
-// ai-command-config.js — Hằng số, Tool Schemas, Prompt (v2)
+// ai-command-config.js — Hằng số, Tool Schemas, Prompt (v15)
 // ═══════════════════════════════════════════════════════════════
 
 export const POSITIONS_KEY = 'ai_saved_positions_v1';
@@ -43,8 +43,10 @@ export const ACTION_TOOLS = [
     T('lookAround', 'Describe what is around the character ("xung quanh có gì").'),
     T('countBoxes', 'Count boxes, optionally only one color ("có bao nhiêu hộp đỏ").', { color: colorP() }),
 
-    // ── Nhặt / đặt hộp
+    // ── Nhặt / đặt / đá hộp
     T('walkToPickup', 'Walk to a box and pick it up. Give boxId OR color (nearest of that color). Fails if already carrying another box → drop first.',
+        { boxId: str('Box id like b3'), color: colorP() }),
+    T('kickBox', 'Walk to a box and kick it away. Give boxId OR color (nearest of that color).',
         { boxId: str('Box id like b3'), color: colorP() }),
     T('walkToDropNearCamera', 'Carry the held box to near the camera/user and put it down ("mang về đây", "đưa lại chỗ tôi"). Requires carrying a box.',
         { offset: num('Optional offset') }),
@@ -72,6 +74,7 @@ export const ACTION_TOOLS = [
     T('stop', 'Stop / cancel the current action.'),
     T('grab', 'Lift the CHARACTER into the air ("nhấc nhân vật lên"). Not for boxes.'),
     T('release', 'Release the lifted character; if carrying a box, put the box down instead.'),
+    T('playRPS', 'Start the Rock-Paper-Scissors minigame with the user.'),
 
     // ── Camera
     T('focusOn', 'Move the camera to focus on a box (boxId or color) or the character (target:"character").',
@@ -90,7 +93,6 @@ export const ACTION_TOOLS = [
     // ── Meta
     T('repeatLast', 'Repeat the previous successful plan ("làm lại", "lặp lại", "nữa đi").'),
 
-    // ⭐ CẬP NHẬT: Thêm confidence cho unclear
     T('unclear', 'Command is ambiguous or incomplete, OR the text is not a command (chat). One short Vietnamese message/question.',
         {
             text: str('Vietnamese message'),
@@ -126,6 +128,8 @@ Output tool calls ONLY. Never write plain text.
    "tạo 3 hộp tím gần tôi"                   → spawnBoxNear{color:purple,count:3}
    "đổi hộp b2 thành màu hồng"               → recolorBox{boxId:b2,color:pink}
    "dọn hộp đỏ với hộp vàng"                 → removeBoxesByColor{red}, removeBoxesByColor{amber}
+   "đá hộp xanh lá ra xa"                    → kickBox{color:green}
+   "chơi oẳn tù tì đi"                       → playRPS
    "đi tới hộp gần nhất rồi nhặt nó"         → walkToPickup{boxId:<nearest id from scene>}
    "đang cầm hộp, nhặt hộp xanh lá"          → walkToDropDirection{forward,1}, walkToPickup{color:green}
    "đổi sang con rồng" (models: Dragon,Robot) → switchModel{modelName:"Dragon"}

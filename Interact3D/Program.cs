@@ -15,11 +15,15 @@ var connectionString = builder.Configuration.GetConnectionString("DefaultConnect
 
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseSqlServer(connectionString));
+
 // 2. DI Services
-builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IModelService, ModelService>();
 builder.Services.AddScoped<IPositionService, PositionService>();
+
+// ⭐ FIX: Đăng ký IHttpClientFactory cho AIProxyController
+builder.Services.AddHttpClient();
+
 // 3. MVC & Session
 builder.Services.AddControllersWithViews();
 builder.Services.AddHttpContextAccessor();
@@ -81,6 +85,7 @@ if (!app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
+
 // Đăng ký MIME Types cho file 3D (FBX, GLB, GLTF)
 var provider = new Microsoft.AspNetCore.StaticFiles.FileExtensionContentTypeProvider();
 provider.Mappings[".fbx"] = "application/octet-stream";
@@ -90,7 +95,9 @@ provider.Mappings[".gltf"] = "model/gltf+json";
 app.UseStaticFiles(new StaticFileOptions
 {
     ContentTypeProvider = provider
-}); app.UseRouting();
+});
+
+app.UseRouting();
 app.UseSession();
 app.UseAuthentication();
 app.UseAuthorization();

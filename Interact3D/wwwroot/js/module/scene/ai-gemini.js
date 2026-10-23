@@ -1,12 +1,12 @@
 ﻿// ═══════════════════════════════════════════════════════════════
-// ai-gemini.js — UI v19 (Fix Options Timing, Confidence, Memory)
+// ai-gemini.js — UI v25 (Update Chat Import Version)
 // ═══════════════════════════════════════════════════════════════
 
 import { handleCommand } from './ai-controller.js';
-import { handleChat } from './ai-chat/ai-chat-main.js';
+import { handleChat } from './ai-chat/ai-chat-main.js?v=24'; // ⭐ UPDATE v=24
 import { handleImageVision } from './ai-vision-handler.js';
 import { initImageUploader } from './ai-ui-image-uploader.js';
-import { MAX_HISTORY_PAIRS, formatMarkdown, getPrefs, MODEL_CHAIN } from './ai-shared.js?v=12';
+import { formatMarkdown, getPrefs } from './ai-shared.js?v=21';
 import { printStats, resetStats } from './ai-debug.js?v=12';
 
 export { handleCommand, handleChat };
@@ -16,26 +16,35 @@ export const handleUserCommand = (aiTools, text, opts) => handleCommand(aiTools,
 // STORAGE & STATE
 // ═══════════════════════════════════════════════════════════════
 const STORAGE_HISTORY = 'ai_chat_history_v1';
-const STORAGE_PREFS = 'ai_user_prefs_v1';
 const STORAGE_COLLAPSED = 'ai_panel_collapsed';
 const STORAGE_LAST_MODE = 'ai_last_mode';
+
+const VALID_MODES = ['gentle', 'normal', 'savage'];
+const MAX_UI_HISTORY = 20;
 
 const chatHistory = [];
 let searchFilter = '';
 let currentImageBase64 = null;
-let pendingOptions = null; // ⭐ Biến tạm giữ Options chờ gán vào chatHistory
+let pendingOptions = null;
 
 function loadHistory() {
     try {
         const raw = sessionStorage.getItem(STORAGE_HISTORY);
         if (!raw) return;
         const arr = JSON.parse(raw);
-        if (Array.isArray(arr)) chatHistory.push(...arr.slice(-MAX_HISTORY_PAIRS * 2));
-    } catch { /* ignore */ }
+        if (Array.isArray(arr)) {
+            chatHistory.push(...arr.slice(-MAX_UI_HISTORY));
+        }
+    } catch { }
 }
 
 function persistHistory() {
-    try { sessionStorage.setItem(STORAGE_HISTORY, JSON.stringify(chatHistory)); } catch { }
+    try {
+        if (chatHistory.length > MAX_UI_HISTORY) {
+            chatHistory.splice(0, chatHistory.length - MAX_UI_HISTORY);
+        }
+        sessionStorage.setItem(STORAGE_HISTORY, JSON.stringify(chatHistory));
+    } catch { }
 }
 
 function clearHistory() {
@@ -51,8 +60,16 @@ function getHistoryPairCount() {
     return Math.floor(chatHistory.length / 2);
 }
 
-function loadLastMode() { try { return localStorage.getItem(STORAGE_LAST_MODE) || 'normal'; } catch { return 'normal'; } }
-function saveLastMode(v) { try { localStorage.setItem(STORAGE_LAST_MODE, v); } catch { } }
+function loadLastMode() {
+    try {
+        const raw = localStorage.getItem(STORAGE_LAST_MODE);
+        return VALID_MODES.includes(raw) ? raw : 'normal';
+    } catch { return 'normal'; }
+}
+function saveLastMode(v) {
+    if (!VALID_MODES.includes(v)) v = 'normal';
+    try { localStorage.setItem(STORAGE_LAST_MODE, v); } catch { }
+}
 function loadCollapsed() { try { return sessionStorage.getItem(STORAGE_COLLAPSED) === '1'; } catch { return false; } }
 function saveCollapsed(v) { try { sessionStorage.setItem(STORAGE_COLLAPSED, v ? '1' : '0'); } catch { } }
 
@@ -61,6 +78,12 @@ function escapeHtml(s) {
         .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
         .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
+
+const MODE_LABELS = {
+    gentle: '🌸 Nhẹ nhàng',
+    normal: '😊 Bình thường',
+    savage: '😈 Mỏ hỗn',
+};
 
 // ═══════════════════════════════════════════════════════════════
 // MAIN UI INITIALIZER
@@ -72,16 +95,22 @@ export function initAICommandUI(aiTools) {
 
     const wrap = document.createElement('div');
     wrap.id = 'ai-command-bar';
+
+    // ⭐ FIX: Container chính dùng flex-col, giới hạn chiều cao
     wrap.style.cssText = `
-        position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%);
+        position: fixed; bottom: 80px; left: 50%; transform: translateX(-50%);
         width: min(680px, 94vw); background: rgba(15, 23, 42, 0.96);
         border: 1px solid #334155; border-radius: 12px; z-index: 9999;
-        backdrop-filter: blur(10px); overflow: hidden;
-        display: flex; flex-direction: column; transition: max-height 0.2s ease;
+        backdrop-filter: blur(10px);
+        display: flex; flex-direction: column; 
+        max-height: 85vh; /* Giới hạn chiều cao tối đa */
+        box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+        overflow: hidden; /* Ẩn phần tràn */
     `;
 
     wrap.innerHTML = `
-        <div style="padding: 6px 10px; background: rgba(30, 41, 59, 0.9); border-bottom: 1px solid #334155; display: flex; justify-content: space-between; align-items: center;">
+        <!-- HEADER (Cố định trên cùng) -->
+        <div style="flex-shrink: 0; padding: 6px 10px; background: rgba(30, 41, 59, 0.9); border-bottom: 1px solid #334155; display: flex; justify-content: space-between; align-items: center;">
             <div id="ai-tabs" style="display: flex; gap: 4px; align-items: center;">
                 <button data-mode="command" class="ai-tab ai-tab-active" style="background: #0284c7; color: #fff; border: none; padding: 4px 12px; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 600;">🎮 Điều khiển</button>
                 <button data-mode="chat" class="ai-tab" style="background: transparent; color: #94a3b8; border: none; padding: 4px 12px; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 600;">💬 Hỏi đáp</button>
@@ -100,8 +129,12 @@ export function initAICommandUI(aiTools) {
                 <button id="ai-toggle-key" style="background: transparent; border: 1px solid #475569; color: #94a3b8; padding: 3px 10px; border-radius: 6px; cursor: pointer; font-size: 12px;">🔑</button>
             </div>
         </div>
-        <div id="ai-body" style="display: flex; flex-direction: column;">
-            <div id="ai-key-panel" style="display: none; padding: 12px; background: rgba(30, 41, 59, 0.95); border-bottom: 1px solid #334155;">
+
+        <!-- BODY (Chứa các panel, flex 1 để co giãn) -->
+        <div id="ai-body" style="flex: 1; display: flex; flex-direction: column; overflow: hidden; min-height: 0;">
+            
+            <!-- Key Panel -->
+            <div id="ai-key-panel" style="display: none; flex-shrink: 0; padding: 12px; background: rgba(30, 41, 59, 0.95); border-bottom: 1px solid #334155;">
                 <form id="ai-key-form" onsubmit="event.preventDefault();">
                     <div style="display: flex; gap: 8px; margin-bottom: 8px;">
                         <input id="ai-key-input" type="password" placeholder="Dán Groq API Key..." autocomplete="off" style="flex: 1; padding: 8px; background: #0f172a; border: 1px solid #475569; border-radius: 6px; color: #fff; outline: none;" />
@@ -109,17 +142,24 @@ export function initAICommandUI(aiTools) {
                     </div>
                 </form>
             </div>
-            <div id="ai-search-panel" style="display: none; padding: 8px 12px; background: rgba(30, 41, 59, 0.7); border-bottom: 1px solid #334155;">
+
+            <!-- Search Panel -->
+            <div id="ai-search-panel" style="display: none; flex-shrink: 0; padding: 8px 12px; background: rgba(30, 41, 59, 0.7); border-bottom: 1px solid #334155;">
                 <input id="ai-search-input" type="text" placeholder="🔍 Tìm tin nhắn..." style="width: 100%; padding: 6px 10px; background: #0f172a; border: 1px solid #475569; border-radius: 6px; color: #fff; outline: none; font-size: 12px;" />
             </div>
-            <div id="ai-chat-log" style="display: none; max-height: 240px; overflow-y: auto; padding: 8px 12px; background: rgba(15, 23, 42, 0.85); border-bottom: 1px solid #334155; font-size: 13px; color: #cbd5e1; scroll-behavior: smooth;"></div>
             
-            <div id="ai-input-area" style="padding: 10px 12px; display: flex; gap: 8px; position: relative;">
+            <!-- Chat Log (flex 1, scroll bên trong) -->
+            <div id="ai-chat-log" style="display: none; flex: 1; min-height: 100px; max-height: 40vh; overflow-y: auto; padding: 8px 12px; background: rgba(15, 23, 42, 0.85); border-bottom: 1px solid #334155; font-size: 13px; color: #cbd5e1; scroll-behavior: smooth;"></div>
+            
+            <!-- Input Area (Cố định dưới cùng) -->
+            <div id="ai-input-area" style="flex-shrink: 0; padding: 10px 12px; display: flex; gap: 8px; position: relative; background: rgba(15, 23, 42, 0.96);">
                 <div id="ai-upload-anchor" style="display: flex; align-items: center;"></div>
                 <input id="ai-input" type="text" placeholder='VD: "đi sang trái", "nhặt hộp đỏ"' style="flex:1; padding:9px; background:#1e293b; border:1px solid #334155; border-radius:8px; color:#fff; outline:none;" />
                 <button id="ai-btn" style="padding:9px 20px; background:#0284c7; color:#fff; border:none; border-radius:8px; cursor:pointer; font-weight:600;">Gửi</button>
             </div>
-            <div id="ai-status" style="font-size:13px; color:#38bdf8; padding: 0 12px 10px; min-height: 18px; display: flex; align-items: center; gap: 8px;"></div>
+
+            <!-- Status Bar -->
+            <div id="ai-status" style="flex-shrink: 0; font-size:13px; color:#38bdf8; padding: 0 12px 10px; min-height: 18px; display: flex; align-items: center; gap: 8px;"></div>
         </div>
     `;
 
@@ -147,7 +187,17 @@ export function initAICommandUI(aiTools) {
     let chatMode = loadLastMode();
     let collapsed = loadCollapsed();
 
+    saveLastMode(chatMode);
+    window.__currentChatMode = chatMode;
     modeSelect.value = chatMode;
+
+    requestAnimationFrame(() => {
+        modeSelect.value = chatMode;
+        console.log(
+            `%c[AI UI] init mode="${chatMode}" · localStorage="${localStorage.getItem('ai_last_mode')}" · select.value="${modeSelect.value}"`,
+            'background:#0284c7;color:#fff;padding:2px 6px;border-radius:3px;font-weight:600'
+        );
+    });
 
     const PLACEHOLDERS = {
         command: 'VD: "đi sang trái", "xóa hết box", "dừng lại"',
@@ -200,7 +250,7 @@ export function initAICommandUI(aiTools) {
             const isUser = m.role === 'user';
             const bg = isUser ? 'rgba(2,132,199,0.12)' : 'rgba(139,92,246,0.12)';
             const border = isUser ? '#0284c7' : '#8b5cf6';
-            const label = isUser ? 'Bạn' : 'Linh';
+            const label = isUser ? 'Bạn' : 'Reika';
             const avatar = isUser ? '👤' : '🤖';
 
             let content = isUser ? escapeHtml(m.content).replace(/\n/g, '<br>') : formatMarkdown(m.content);
@@ -282,6 +332,12 @@ export function initAICommandUI(aiTools) {
             b.style.background = active ? BTN_COLORS[mode] : 'transparent';
             b.style.color = active ? '#fff' : '#94a3b8';
         });
+
+        if (mode === 'chat') {
+            modeSelect.value = chatMode;
+            window.__currentChatMode = chatMode;
+        }
+
         updateHistoryUI();
         renderChatLog();
         input.focus();
@@ -290,9 +346,24 @@ export function initAICommandUI(aiTools) {
     wrap.querySelectorAll('[data-mode]').forEach(b => b.onclick = () => switchMode(b.dataset.mode));
 
     modeSelect.onchange = () => {
-        chatMode = modeSelect.value;
+        const val = modeSelect.value;
+        if (!VALID_MODES.includes(val)) {
+            console.warn(`[AI UI] mode không hợp lệ "${val}" → reset về normal`);
+            modeSelect.value = 'normal';
+            chatMode = 'normal';
+        } else {
+            chatMode = val;
+        }
+
         saveLastMode(chatMode);
-        setStatus(`Đã chuyển sang chế độ: ${modeSelect.options[modeSelect.selectedIndex].text}`);
+        window.__currentChatMode = chatMode;
+
+        console.log(
+            `%c[AI UI] mode changed → "${chatMode}" · localStorage="${localStorage.getItem('ai_last_mode')}" · window="__${window.__currentChatMode}"`,
+            'background:#10b981;color:#fff;padding:2px 6px;border-radius:3px;font-weight:600'
+        );
+
+        setStatus(`Đã chuyển sang chế độ: ${MODE_LABELS[chatMode]}`);
         setTimeout(() => setStatus(''), 2000);
     };
 
@@ -365,7 +436,7 @@ export function initAICommandUI(aiTools) {
         const base64ToSend = currentImageBase64;
         if (hasImage) uploader.clearImage();
 
-        pendingOptions = null; // Reset trước khi gọi
+        pendingOptions = null;
 
         setStatus('Đang xử lý...', { spinner: true });
 
@@ -382,7 +453,6 @@ export function initAICommandUI(aiTools) {
                     finalOptions = ["Đúng vậy", "Không phải"];
                 }
 
-                // ⭐ Lưu vào biến tạm thay vì chatHistory
                 if (finalOptions.length > 0) {
                     pendingOptions = finalOptions;
                 }
@@ -392,6 +462,7 @@ export function initAICommandUI(aiTools) {
         try {
             if (base64ToSend) {
                 opts.history = getHistoryForAPI().slice(0, -1);
+                opts.mode = chatMode;
                 opts.savageMode = (chatMode === 'savage');
 
                 const result = await handleImageVision(aiTools, text, base64ToSend, opts);
