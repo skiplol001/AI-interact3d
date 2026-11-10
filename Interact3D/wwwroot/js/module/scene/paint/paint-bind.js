@@ -1,7 +1,7 @@
 ﻿// ═══════════════════════════════════════════════════════════════
-// paint-bind.js — v3 (Save button → Gallery prompt)
+// paint-bind.js — v6 (Anti-aliasing toggle · Gộp thanh trượt Mượt)
 // ═══════════════════════════════════════════════════════════════
-import { PAPER_PRESETS } from './paint-ui.js?v=3';
+import { PAPER_PRESETS } from './paint-ui.js?v=6';
 
 export const bindMixin = {
     _bindUI() {
@@ -14,15 +14,16 @@ export const bindMixin = {
             this.close();
         };
         $('#paint-gallery-open').onclick = () => this._openGallery();
-
-        // ⭐ Đổi: Lưu → Gallery prompt
+        $('#paint-sketch-open').onclick = () => this._openSketchDialog();
         $('#paint-save-draft').onclick = () => this._saveToGalleryWithPrompt();
-
         $('#paint-done').onclick = () => this._handleDone();
+        $('#paint-export').onclick = () => this._exportImage();
+        $('#paint-save-palette').onclick = () => this._savePalettePrompt();
 
         // ─── Draw mode ───
         $('#paint-mode-normal').onclick = () => this._setDrawMode('normal');
         $('#paint-mode-taper').onclick = () => this._setDrawMode('taper');
+        $('#paint-pen-pressure').onclick = () => this._setPenPressure(!this.penPressure);
         $('#paint-pressure-slider').oninput = (e) => {
             this.pressureStrength = parseInt(e.target.value, 10);
             $('#paint-pressure-val').textContent = this.pressureStrength;
@@ -36,6 +37,13 @@ export const bindMixin = {
         $('#paint-sel-crop').onclick = () => this._cropToSelection();
         $('#paint-sel-auto').onclick = () => this._autoSelectContent();
         $('#paint-sel-delete').onclick = () => this._clearSelectionPixels();
+
+        // ─── Fill options ───
+        $('#paint-fill-all').onchange = (e) => { this.fillAll = e.target.checked; };
+        $('#paint-fill-tol').oninput = (e) => {
+            this.fillTol = parseInt(e.target.value, 10);
+            $('#paint-fill-tol-val').textContent = this.fillTol;
+        };
 
         // ─── Tools ───
         $$('[data-tool]').forEach(btn => {
@@ -63,9 +71,7 @@ export const bindMixin = {
 
         // ─── Sizes ───
         $$('[data-size]').forEach(btn => {
-            btn.onclick = () => {
-                this._setSize(parseInt(btn.dataset.size, 10));
-            };
+            btn.onclick = () => this._setSize(parseInt(btn.dataset.size, 10));
         });
         $('#paint-size-slider').oninput = (e) => {
             this._setSize(parseInt(e.target.value, 10));
@@ -81,22 +87,42 @@ export const bindMixin = {
             $('#paint-stab-val').textContent = this.stabilizer;
         };
 
+        // ⭐ Khử răng cưa = chế độ chất lượng cao (path + stamp 2x)
+        const aaEl = $('#paint-antialias');
+        if (aaEl) {
+            aaEl.checked = this.antialias !== false;
+            globalThis.__paintBrushHQ = aaEl.checked;
+            aaEl.onchange = (e) => {
+                this.antialias = e.target.checked;
+                globalThis.__paintBrushHQ = this.antialias;
+                [this.ctx, this.overlayCtx].forEach(c => {
+                    if (c) { c.imageSmoothingEnabled = true; c.imageSmoothingQuality = 'high'; }
+                });
+                this._setStatus(this.antialias ? '✨ Chất lượng cao (nét mềm mượt)' : '⚡ Chế độ nhanh');
+            };
+        }
+
         // ─── Paper ───
         $('#paint-paper-select').onchange = (e) => {
             const key = e.target.value;
             if (!PAPER_PRESETS[key]) return;
-            if (this._strokes.length > 0 && !confirm('Đổi khổ giấy sẽ xoá toàn bộ tranh. Tiếp tục?')) {
+            if (this._hasContent() && !confirm('Đổi khổ giấy sẽ xoá toàn bộ tranh. Tiếp tục?')) {
                 e.target.value = this.paperKey;
                 return;
             }
             const p = PAPER_PRESETS[key];
+            this._resetSelectionState();
             this.paperKey = key;
             this.CANVAS_W = p.w;
             this.CANVAS_H = p.h;
-            this._strokes = [];
-            this._redoStack = [];
-            this._selection = null;
             this._initCanvas();
+
+            this.layers = [];
+            this.activeLayerId = null;
+            this._history = [];
+            this._redoStack = [];
+            this._createLayer('Background', { skipHistory: true });
+
             this._fitCanvas();
             this._updateBrushCursorSize();
             this._setStatus(`Đã đổi khổ giấy: ${p.label}`);
@@ -134,7 +160,7 @@ export const bindMixin = {
         $('#paint-undo').onclick = () => this.undo();
         $('#paint-redo').onclick = () => this.redo();
         $('#paint-clear').onclick = () => {
-            if (this._strokes.length === 0) return;
+            if (this._history.length === 0) return;
             if (confirm('Xoá toàn bộ?')) this.clearAll();
         };
 
@@ -150,23 +176,62 @@ export const bindMixin = {
             this._fitCanvas();
         };
 
+        // ─── Layer panel ───
+        $('#paint-layer-add').onclick = () => this._createLayer();
+        $('#paint-layer-dup').onclick = () => this._duplicateLayer();
+        $('#paint-layer-del').onclick = () => this._deleteLayer();
+        $('#paint-layer-up').onclick = () => this._moveLayer(1);
+        $('#paint-layer-down').onclick = () => this._moveLayer(-1);
+        $('#paint-layer-opacity').oninput = (e) => {
+            const l = this._getActiveLayer();
+            if (!l) return;
+            l.opacity = parseInt(e.target.value, 10) / 100;
+            $('#paint-layer-opacity-val').textContent = e.target.value;
+            this._renderComposite();
+            this._dirty = true;
+        };
+        $('#paint-layer-blend').onchange = (e) => {
+            const l = this._getActiveLayer();
+            if (!l) return;
+            l.blendMode = e.target.value;
+            this._renderComposite();
+            this._dirty = true;
+        };
+
+        this._bindCustomModal && this._bindCustomModal();
+
         // Init state
         this._setDrawMode('normal');
+        this._setPenPressure(this.penPressure);
     },
 
-    // ⭐ Set size thông minh — sync bucket + UI
+    _setPenPressure(on) {
+        this.penPressure = !!on;
+        const b = this.overlay && this.overlay.querySelector('#paint-pen-pressure');
+        if (!b) return;
+        if (this.penPressure) {
+            b.textContent = '🖊 Áp lực: Bật';
+            b.style.background = 'rgba(245,158,11,0.2)';
+            b.style.borderColor = '#f59e0b';
+            b.style.color = '#fbbf24';
+        } else {
+            b.textContent = '🖊 Áp lực: Tắt';
+            b.style.background = 'transparent';
+            b.style.borderColor = '#475569';
+            b.style.color = '#94a3b8';
+        }
+    },
+
     _setSize(sz) {
         sz = Math.max(1, Math.min(300, sz));
         this.size = sz;
 
-        // Sync bucket
         if (this.tool === 'eraser') {
             this._eraserSize = sz;
         } else {
             this._brushSize = sz;
         }
 
-        // Update UI
         const slider = this.overlay.querySelector('#paint-size-slider');
         const val = this.overlay.querySelector('#paint-size-val');
         if (slider) slider.value = sz;
@@ -209,6 +274,7 @@ export const bindMixin = {
         $('#paint-brush-group').style.display = this.tool === 'brush' ? 'flex' : 'none';
         $('#paint-shape-group').style.display = this.tool === 'shape' ? 'flex' : 'none';
         $('#paint-select-group').style.display = this.tool === 'select' ? 'flex' : 'none';
+        $('#paint-fill-group').style.display = this.tool === 'fill' ? 'flex' : 'none';
     },
 
     _updateCursor() {
@@ -237,11 +303,9 @@ export const bindMixin = {
         this.brushCursor.style.boxShadow = `0 0 0 1px rgba(0,0,0,0.7), inset 0 0 0 1px rgba(255,255,255,0.6), 0 0 8px ${c}88`;
     },
 
-    // ⭐ Switch tool — save/restore size riêng cho brush vs eraser
     _switchTool(toolId) {
         const oldTool = this.tool;
 
-        // Save current size vào bucket của tool cũ
         if (oldTool === 'eraser') {
             this._eraserSize = this.size;
         } else if (['brush', 'shape'].includes(oldTool)) {
@@ -250,20 +314,17 @@ export const bindMixin = {
 
         this.tool = toolId;
 
-        // Restore size từ bucket
         if (toolId === 'eraser') {
             this.size = this._eraserSize ?? 80;
         } else if (['brush', 'shape'].includes(toolId)) {
             this.size = this._brushSize ?? 8;
         }
 
-        // Sync UI
         const slider = this.overlay.querySelector('#paint-size-slider');
         const val = this.overlay.querySelector('#paint-size-val');
         if (slider) slider.value = this.size;
         if (val) val.textContent = this.size;
 
-        // Active class
         this.overlay.querySelectorAll('[data-tool]').forEach(b =>
             b.classList.toggle('paint-tool-active', b.dataset.tool === toolId)
         );

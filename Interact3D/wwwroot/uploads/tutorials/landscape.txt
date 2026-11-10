@@ -1,0 +1,36 @@
+﻿# VẼ PHONG CẢNH
+
+## 1. Phối cảnh (Perspective)
+- 1 điểm tụ (1-point): nhìn thẳng — đường chân trời ngang giữa
+- 2 điểm tụ (2-point): nhìn chéo góc — dùng cho nhà cửa
+- 3 điểm tụ (3-point): nhìn từ trên cao/xuống thấp
+- Đường chân trời (horizon) luôn ở tầm mắt người vẽ
+
+## 2. Bầu trời
+- Gradient từ xanh đậm (trên) đến nhạt (dưới chân trời)
+- Mây: chia 3 tầng — mây cao (cirrus, mỏng), mây giữa (cumulus, bông), mây thấp (stratus, dẹt)
+- Hoàng hôn: đỏ-cam-vàng ở chân trời, xanh tím ở trên
+- Đêm: xanh navy, trăng tròn + highlight, sao lấm chấm
+
+## 3. Cây cối
+- Thân: hình trụ, hơi cong, chia thành các "khúc"
+- Tán lá: chùm bong bóng, không vẽ từng lá
+- Cây gần: chi tiết, cây xa: đơn giản 1 khối
+- Gió: tán lá nghiêng 1 hướng, lá rơi
+
+## 4. Núi
+- Núi xa: silhouette đơn giản, màu nhạt (atmospheric perspective)
+- Núi gần: chi tiết vân đá, cây
+- Đỉnh núi có tuyết: chia sáng/tối rõ
+- Dãy núi: vẽ 2-3 lớp chồng nhau, xa nhạt hơn gần
+
+## 5. Nước
+- Mặt nước phản chiếu bầu trời + vật thể trên bờ
+- Sóng: đường cong nhẹ, phá vỡ bởi gió
+- Thác: dòng chảy liên tục, highlight trắng ở chỗ nước đổ
+- Biển: horizon mờ, sóng lăn tăn xa, sóng lớn gần
+
+## 6. Bố cục
+- Quy tắc 1/3: chia khung thành 9 ô, đặt chủ thể ở giao điểm
+- Đường dẫn (leading line): đường cong dẫn mắt vào điểm chính
+- Foreground/midground/background: 3 lớp rõ ràng

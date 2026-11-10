@@ -1,26 +1,32 @@
 // ═══════════════════════════════════════════════════════════════
-// slingshot-system.js — v56 (cleanup _carryingSl in dispose)
+// slingshot-system.js — v63 (Cannon Feel: recoil, shell size, long-range fog)
 // ═══════════════════════════════════════════════════════════════
 import * as THREE from 'https://esm.sh/three@0.160.0';
 
 import {
     FLIGHT_SPEED_MULT, INITIAL_SPEED_FACTOR, ACCEL_RATE,
     PHASE_DURATIONS, PHYSICS_STEP, TRAJ_STEPS,
-    MAX_FLIGHT_TIME, WORLD_LIMIT, GROUND_Y,
+    MAX_FLIGHT_TIME, WORLD_LIMIT, GROUND_Y, FOG_FLIGHT_DENSITY,
     getCurrentMode, pickLine,
-} from './slingshot/config.js?v=1';
+} from './slingshot/config.js?v=6';
 
 import { createSlingshotUI } from './slingshot/ui.js?v=1';
 import { createGhostModel } from './slingshot/model.js?v=1';
 
-import { aimMixin } from './slingshot/aim.js?v=1';
-import { physicsMixin } from './slingshot/physics.js?v=3';
+import { aimMixin } from './slingshot/aim.js?v=3';
+import { physicsMixin } from './slingshot/physics.js?v=9'; // ⭐ v9: AOE + sửa hộp bao nhà
 import { cameraMixin } from './slingshot/camera.js?v=1';
 import { helpersMixin } from './slingshot/helpers.js?v=1';
 
-import { gentleSequence } from './slingshot/sequences/gentle.js?v=1';
-import { normalSequence } from './slingshot/sequences/normal.js?v=1';
-import { savageSequence } from './slingshot/sequences/savage.js?v=1';
+import { gentleSequence } from './slingshot/sequences/gentle.js?v=2';
+import { normalSequence } from './slingshot/sequences/normal.js?v=2';
+import { savageSequence } from './slingshot/sequences/savage.js?v=2';
+
+const ROCK_EMISSIVE_CHARGE = 2.5;
+const ROCK_LIGHT_BASE = 1.5;
+const ROCK_LIGHT_POWER = 2.5;
+const SHELL_SCALE_PER_POWER = 0.7;   // đạn pháo to dần theo lực kéo
+const RECOIL_DISTANCE = 0.32;        // ná giật lùi (m) khi bắn full lực
 
 export class SlingshotSystem {
     constructor(scene, camera, canvas, characterCtrl, boxSystem) {
@@ -63,7 +69,10 @@ export class SlingshotSystem {
 
         this.rockStartPos = new THREE.Vector3();
         this.rockVelocity = new THREE.Vector3();
-        this.rockGravity = -15;
+
+        // ⭐ ĐỒNG BỘ TRỌNG LỰC VỚI AIM.JS
+        this.rockGravity = -9.8;
+
         this.isFlying = false;
         this.isBouncing = false;
         this.isStuck = false;
@@ -123,6 +132,19 @@ export class SlingshotSystem {
         this._prevPos = new THREE.Vector3();
         this._segLine = new THREE.Line3();
         this._hitBox = null;
+
+        this._stuckCheckTimer = 0;
+        this._lastRockPos = new THREE.Vector3();
+
+        // ⭐ Recoil (ná giật lùi khi bắn)
+        this._recoil = 0;
+        this._recoilPower = 0;
+        this._recoilBase = new THREE.Vector3();
+        this._recoilDir = new THREE.Vector3(0, 0, 1);
+
+        // ⭐ Sương mù: giảm mật độ khi đạn bay để nhìn được đường đạn xa
+        this._fogBase = null;
+        this._fogLast = null;
 
         createSlingshotUI(this);
         this._initTrajectoryLine();
@@ -200,7 +222,7 @@ export class SlingshotSystem {
         this._startCinematic(shot.forward);
 
         if (shot.percent > 0.7) {
-            if (this.rock.material) { this.rock.material.emissive.setHex(0x00ffff); this.rock.material.emissiveIntensity = 5.0; }
+            if (this.rock.material) { this.rock.material.emissive.setHex(0x00ffff); this.rock.material.emissiveIntensity = ROCK_EMISSIVE_CHARGE; }
             this._launchTimer = setTimeout(() => {
                 this._launchTimer = null;
                 this._isProcessingShot = false;
@@ -243,6 +265,8 @@ export class SlingshotSystem {
         this._phase2BoomTriggered = false;
         this._lastChaseDir.copy(shot.forward);
         this._lastMagicGateTime = 0;
+        this._stuckCheckTimer = 0;
+        this._lastRockPos.copy(shot.startPos);
 
         this._targetSpeed = shot.pull * FLIGHT_SPEED_MULT;
         const initialSpeed = shot.pull * FLIGHT_SPEED_MULT * INITIAL_SPEED_FACTOR;
@@ -254,11 +278,19 @@ export class SlingshotSystem {
 
         if (this.chargingEffect) { this.chargingEffect.dispose(); this.chargingEffect = null; }
 
+        // ⭐ Ná giật lùi (recoil)
+        this._recoilBase.copy(this.slingshot.position);
+        this._recoilDir.copy(shot.forward);
+        this._recoilPower = shot.percent;
+        this._recoil = 1;
+
         this.scene.attach(this.rock);
         this.rock.position.copy(shot.startPos);
+        this.rock.scale.setScalar(1 + shot.percent * SHELL_SCALE_PER_POWER); // ⭐ viên đạn pháo to dần theo lực
         this.rubberBands.forEach(b => b.visible = false);
 
-        if (window.vfxSystem) this.projectileFX = window.vfxSystem.createProjectileEffect();
+        if (!this.projectileFX && window.vfxSystem) this.projectileFX = window.vfxSystem.createProjectileEffect();
+        else if (this.projectileFX) this.projectileFX.reset?.();
 
         const color = this._powerColor(shot.percent);
         if (!this.rockAura && window.vfxSystem) {
@@ -267,8 +299,8 @@ export class SlingshotSystem {
             this.rock.add(this.rockAura);
         }
         if (this.rockAura) { this.rockAura.material.color.setHex(color); this.rockAura.visible = true; this.rockAura.scale.setScalar(1.6); }
-        if (this.rock.material) { this.rock.material.emissive.setHex(color); this.rock.material.emissiveIntensity = 1.5 + shot.percent * 3; }
-        if (this.rockLight) { this.rockLight.color.setHex(color); this.rockLight.intensity = 2 + shot.percent * 6; }
+        if (this.rock.material) { this.rock.material.emissive.setHex(color); this.rock.material.emissiveIntensity = 1.2 + shot.percent * 1.3; }
+        if (this.rockLight) { this.rockLight.color.setHex(color); this.rockLight.intensity = ROCK_LIGHT_BASE + shot.percent * ROCK_LIGHT_POWER; }
     }
 
     _updateProjectileFX(dt) {
@@ -290,8 +322,44 @@ export class SlingshotSystem {
         fx.update(dt, this.rock.position, dir, this.rockPower, active, this.rockVelocity.length(), this._powerColor(this.rockPower), intensity);
     }
 
+    // ⭐ Ná giật lùi rồi về vị trí cũ
+    _applyRecoil(dt) {
+        if (this._recoil <= 0) return;
+        if (!this.slingshot) { this._recoil = 0; return; }
+
+        if (this._recoil > 0.003) {
+            this._recoil *= Math.exp(-10 * dt);
+            const k = this._recoil * RECOIL_DISTANCE * (0.35 + this._recoilPower);
+            this.slingshot.position.x = this._recoilBase.x - this._recoilDir.x * k;
+            this.slingshot.position.z = this._recoilBase.z - this._recoilDir.z * k;
+        } else {
+            this.slingshot.position.x = this._recoilBase.x;
+            this.slingshot.position.z = this._recoilBase.z;
+            this._recoil = 0;
+        }
+    }
+
+    // ⭐ Sương mù mỏng đi khi đạn đang bay → thấy được đường đạn xa
+    _updateFog(dt) {
+        const fog = this.scene && this.scene.fog;
+        if (!fog || !fog.isFogExp2) return;
+
+        const active = this.isFlying || this.isStuck || this.isBouncing || this.isHittingShield || this._isProcessingShot;
+
+        if (this._fogBase === null) this._fogBase = fog.density;
+        else if (!active && this._fogLast !== null && Math.abs(fog.density - this._fogLast) > 1e-5) {
+            this._fogBase = fog.density; // nơi khác (ngày/đêm...) đổi sương mù → cập nhật gốc
+        }
+
+        const target = active ? Math.min(this._fogBase, FOG_FLIGHT_DENSITY) : this._fogBase;
+        fog.density += (target - fog.density) * Math.min(1, dt * 3);
+        this._fogLast = fog.density;
+    }
+
     update(dt) {
         this._applyShake();
+        this._applyRecoil(dt);
+        this._updateFog(dt);
         if (this.rockAura) this.rockAura.visible = this.isFlying;
         this._updateProjectileFX(dt);
         this._updateCamera(dt);
@@ -331,11 +399,11 @@ export class SlingshotSystem {
             if (t < 0.3) {
                 const p = t / 0.3;
                 spinSpeed = p * 60; fireRate = p; ringRate = p;
-                glowIntensity = p * 3.0; rockScale = 1.0 - p * 0.1;
+                glowIntensity = p * 2.0; rockScale = 1.0 - p * 0.1;
             } else {
                 spinSpeed = 60 + Math.sin(t * 20) * 10;
                 fireRate = 1.0; ringRate = 1.0;
-                glowIntensity = 3.0 + Math.sin(t * 15) * 1.5; rockScale = 0.9;
+                glowIntensity = 2.0 + Math.sin(t * 15) * 0.8; rockScale = 0.9;
             }
 
             this.rock.rotation.x += dt * spinSpeed;
@@ -408,10 +476,26 @@ export class SlingshotSystem {
         }
 
         if (this.isFlying && this.rock) {
+            // ⭐ NỚI LỎNG ANTI-STUCK
+            if (this._flightTime > 0.5) {
+                const movedDist = this.rock.position.distanceTo(this._lastRockPos);
+                if (movedDist < 0.01) {
+                    this._stuckCheckTimer += dt;
+                } else {
+                    this._stuckCheckTimer = 0;
+                    this._lastRockPos.copy(this.rock.position);
+                }
+                if (this._stuckCheckTimer > 2.0) {
+                    console.warn('[Slingshot] ⚠ Rock stuck detected → force reset');
+                    this._resetRock();
+                    return;
+                }
+            }
+
             this._physicsAccum += dt;
 
             let substeps = 0;
-            while (this._physicsAccum >= PHYSICS_STEP && substeps++ < 20) {
+            while (this._physicsAccum >= PHYSICS_STEP && substeps++ < 100) {
                 this._physicsAccum -= PHYSICS_STEP;
                 this._prevPos.copy(this.rock.position);
 
@@ -445,19 +529,22 @@ export class SlingshotSystem {
                 this.rockVelocity.y += this.rockGravity * PHYSICS_STEP;
                 this.rock.position.addScaledVector(this.rockVelocity, PHYSICS_STEP);
 
+                this._checkCollisionsSwept(this._prevPos, this.rock.position);
+                if (!this.isFlying) return;
+
                 if (this.rock.position.y <= GROUND_Y) {
                     this._landOnGround();
                     return;
                 }
 
                 if (this._flightTime > MAX_FLIGHT_TIME || this.rock.position.length() > WORLD_LIMIT) {
+                    console.warn('[Slingshot] Đạn ra ngoài tầm (hết giờ / quá WORLD_LIMIT) → reset');
                     this._resetRock();
                     return;
                 }
-
-                this._checkCollisionsSwept(this._prevPos, this.rock.position);
-                if (!this.isFlying) return;
             }
+
+            if (this._physicsAccum > PHYSICS_STEP * 100) this._physicsAccum = 0;
 
             const spinSpeed = 15 + this.rockPower * 25;
             this.rock.rotation.x += dt * spinSpeed;
@@ -550,6 +637,11 @@ export class SlingshotSystem {
             if (this.rock.material) this.rock.material.dispose();
         }
         if (this.rockAura) { this.rockAura.material.dispose(); this.rockAura = null; }
+        if (this.rockLight) {
+            this.rockLight.intensity = 0;
+            if (this.rockLight.parent) this.rockLight.parent.remove(this.rockLight);
+            this.rockLight.dispose?.();
+        }
         this.rock = null;
         this.rockLight = null;
         this.rubberBands = [];
@@ -574,6 +666,7 @@ export class SlingshotSystem {
     destroy() {
         this._cancelTimers();
         this._isProcessingShot = false;
+        this._recoil = 0;
         if (this.slingshot) {
             this.exitAimMode();
             this.scene.remove(this.slingshot);
@@ -585,9 +678,14 @@ export class SlingshotSystem {
 
     dispose() {
         this._cancelTimers();
+        this._recoil = 0;
         window.removeEventListener('keydown', this._boundKeyDown);
         window.removeEventListener('keyup', this._boundKeyUp);
         this.canvas.removeEventListener('wheel', this._boundWheel);
+
+        // Trả sương mù về mật độ gốc
+        const fog = this.scene && this.scene.fog;
+        if (fog && fog.isFogExp2 && this._fogBase !== null) fog.density = this._fogBase;
 
         if (this.camera) this.camera.position.sub(this._shakeOffset);
         this._shakeOffset.set(0, 0, 0);

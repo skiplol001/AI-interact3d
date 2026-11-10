@@ -2,8 +2,8 @@
 // house-manager.js — v3.1 (Prebuilt House - Zero Lag)
 // ═══════════════════════════════════════════════════════════════
 import * as THREE from 'https://esm.sh/three@0.160.0';
-import { addMood, getMood } from './ai-chat/ai-mood.js?v=2';
-import { HouseModel } from './house-model.js?v=2';
+import { addMood, getMood } from './chat/ai-mood.js?v=2';
+import { HouseModel } from './house-model.js?v=3';
 
 // ═══════════════════════════════════════════════════════════════
 // CONFIG

@@ -1,8 +1,14 @@
 ﻿// ═══════════════════════════════════════════════════════════════
-// build-mode.js — v28 (House Manager cooldown block)
+// build-mode.js — v29 (Structural physics aware)
+//  • Khối đặt xong KHÔNG còn bị ép "tĩnh": boxSystem.checkStability() quyết định
+//    khối nào đứng được, khối nào rơi/sập.
+//  • Ghost cảnh báo màu vàng + "⚠ Sẽ rơi" khi vị trí đặt không có chỗ đỡ.
+//  • Ghost dùng đúng geometry của khối thật (mái nhà tam giác, cột tròn...).
+//  • Không cho đặt đè lên nhân vật.
+//  • Khối gần nhau / gần cột tự gia cố (xem box-system v40).
 // ═══════════════════════════════════════════════════════════════
 import * as THREE from 'https://esm.sh/three@0.160.0';
-import { SHAPE_CATALOG, CATEGORIES, getShapesByCategory } from './shapes.js?v=7';
+import { SHAPE_CATALOG, CATEGORIES, getShapesByCategory } from './shapes.js?v=8';
 
 const BOX_SIZE = 0.4;
 const DOOR_HEIGHT = 1.2;
@@ -23,10 +29,11 @@ const PALETTE = [
 ];
 
 const GHOST_COLORS = { pillar: 0xd9d2c5, beam: 0x9a6b3a };
+const GHOST_WARN = 0xfbbf24;
 
 const ROLE_HINT = {
-    pillar: '🏛️ <b>Cột tròn đá</b> · đứng một mình được · chịu tải đứng (×10) · đặt khối lên đầu cột',
-    beam: '📏 <b>Dầm gỗ</b> · phải gác <b>2 đầu</b> lên cột/khối · trỏ chuột sang bên để chọn hướng dầm vươn ra · bắc sàn/mái',
+    pillar: '🪵 <b>Cột gỗ tròn</b> · chịu tải đứng · khối đặt <b>gần cột</b> được gia cố · đặt khối lên đầu cột',
+    beam: '📏 <b>Dầm gỗ</b> · phải gác <b>2 đầu</b> lên cột/khối (trọng tâm phải nằm trên chỗ đỡ) · trỏ chuột sang bên để chọn hướng dầm',
 };
 
 // ═══════════════════════════════════════════════════════════════
@@ -106,7 +113,7 @@ function createBuildUI() {
             <button id="build-height-reset" style="padding: 4px 8px; background: transparent; border: 1px solid #475569; border-radius: 4px; color: #94a3b8; font-size: 10px; font-weight: 600; cursor: pointer;">🔄 Auto</button>
         </div>
         <div style="display: flex; gap: 12px; align-items: center; width: 100%; justify-content: space-between; padding-top: 6px; border-top: 1px solid #334155;">
-            <div style="font-size: 10px; color: #94a3b8;" id="build-hint-text"><b>Giữ Alt</b> để đặt xuống đất · Tự động dính xi măng</div>
+            <div style="font-size: 10px; color: #94a3b8;" id="build-hint-text"><b>Giữ Alt</b> để đặt xuống đất · Khối sát nhau / gần cột tự gia cố</div>
             <div style="display: flex; gap: 8px; align-items: center;">
                 <span style="font-size: 11px; color: #64748b;">Box: <b id="build-count" style="color: #38bdf8;">0</b></span>
                 <button id="build-clear" style="padding: 5px 10px; background: transparent; border: 1px solid #ef4444; border-radius: 5px; color: #ef4444; font-size: 11px; font-weight: 600; cursor: pointer;">🗑 Xoá hết</button>
@@ -141,6 +148,7 @@ export class BuildController {
 
         this._ghost = null;
         this._ghostValid = true;
+        this._ghostStable = true;
         this._lastPosition = null;
         this._breakOutline = null;
         this._lastPlaceTime = 0;
@@ -170,7 +178,7 @@ export class BuildController {
         this._onKeyDown = this._onKeyDown.bind(this);
         this._onKeyUp = this._onKeyUp.bind(this);
 
-        console.log('[Build] Ready (v28 — House cooldown block)');
+        console.log('[Build] Ready (v29 — Structural physics)');
     }
 
     _shapeType() { return SHAPE_CATALOG[this.currentShapeKey]?.type || 'box'; }
@@ -185,6 +193,11 @@ export class BuildController {
     }
     _getCurrentShapeHeight() { return this._currentExtents().h; }
     _ghostBaseColor() { return GHOST_COLORS[this._shapeType()] ?? this.color; }
+    _ghostColor() {
+        if (!this._ghostValid) return 0xef4444;
+        if (!this._ghostStable) return GHOST_WARN;
+        return this._ghostBaseColor();
+    }
 
     _buildCategoryTabs() {
         this._categoryTabs.innerHTML = '';
@@ -222,8 +235,10 @@ export class BuildController {
     _disposeGhost() {
         if (!this._ghost) return;
         this.scene.remove(this._ghost);
+        // Geometry của ghost root là geometry DÙNG CHUNG của boxSystem → không dispose.
+        // Chỉ dispose geometry viền (EdgesGeometry) và material riêng của ghost.
         this._ghost.traverse(c => {
-            if (c.geometry) c.geometry.dispose?.();
+            if (c !== this._ghost && c.geometry) c.geometry.dispose?.();
             if (c.material) {
                 if (Array.isArray(c.material)) c.material.forEach(m => m.dispose?.());
                 else c.material.dispose?.();
@@ -237,12 +252,8 @@ export class BuildController {
         const shape = SHAPE_CATALOG[this.currentShapeKey];
         if (!shape) return;
         const type = shape.type;
-        const d = this.boxSystem.getShapeDims(type);
 
-        let geo;
-        if (type === 'pillar') geo = new THREE.CylinderGeometry(0.2, 0.2, d.h, 24);
-        else if (type === 'door' || type === 'window') geo = new THREE.BoxGeometry(d.w, d.h, 0.08);
-        else geo = new THREE.BoxGeometry(d.w, d.h, d.d);
+        const geo = this.boxSystem.createGeometry(type);
 
         const ghost = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color: this._ghostBaseColor(), transparent: true, opacity: 0.4, depthWrite: false }));
         ghost.rotation.order = 'YXZ';
@@ -287,11 +298,10 @@ export class BuildController {
         if (this.boxSystem.setCementVisible) this.boxSystem.setCementVisible(this.isActive && this.mode === 'cement');
     }
 
-    // ⭐ MODIFIED: check cooldown trước khi bật
+    // ⭐ check cooldown trước khi bật
     setEnabled(enabled) {
         if (enabled === this.isActive) return;
 
-        // ⭐ Chặn bật nếu houseManager đang cooldown
         if (enabled) {
             const check = _checkBuildCooldown();
             if (!check.ok) {
@@ -359,16 +369,17 @@ export class BuildController {
             const role = ROLE_HINT[type];
             let extraHint = '';
             if (type === 'door') extraHint = ` · <b style="color:#38bdf8">F</b> Lật cửa`;
-            this._hintText.innerHTML = `${role || `${shape?.icon || '🧱'} <b>${shape?.label || ''}</b>`} · R=${rotY}°${tiltInfo}${extraHint} · <b style="color:#fbbf24">Giữ ALT</b> để đặt xuống đất`;
+            const warn = (!this._ghostStable && this._ghostValid) ? ' · <b style="color:#fbbf24">⚠ Sẽ rơi (không có chỗ đỡ)</b>' : '';
+            this._hintText.innerHTML = `${role || `${shape?.icon || '🧱'} <b>${shape?.label || ''}</b>`} · R=${rotY}°${tiltInfo}${extraHint} · <b style="color:#fbbf24">Giữ ALT</b> để đặt xuống đất${warn}`;
         } else {
-            this._hintText.innerHTML = 'Trái: Xoá · 1/2/3: Mode · ESC: Thoát';
+            this._hintText.innerHTML = 'Trái: Xoá (khối phía trên mất chỗ đỡ sẽ sập) · 1/2/3: Mode · ESC: Thoát';
         }
     }
 
     setColor(hex) {
         this.color = hex;
         this._refreshPalette();
-        if (this._ghost?.material) this._ghost.material.color.setHex(this._ghostValid ? this._ghostBaseColor() : 0xef4444);
+        if (this._ghost?.material) this._ghost.material.color.setHex(this._ghostColor());
     }
 
     _rotate() {
@@ -499,6 +510,17 @@ export class BuildController {
             const oz = (be.d + ne.d) / 2 - Math.abs(b.position.z - z);
             if (ox > 0.05 && oy > 0.05 && oz > 0.05) return false;
         }
+
+        // Không cho xây đè lên nhân vật
+        const ctrl = window.characterCtrl;
+        if (ctrl && ctrl.root) {
+            const p = ctrl.root.position;
+            const R = 0.32, H = 1.6;
+            const ox = ne.w / 2 + R - Math.abs(p.x - x);
+            const oz = ne.d / 2 + R - Math.abs(p.z - z);
+            const yOverlap = (y + ne.h / 2) > p.y + 0.05 && (y - ne.h / 2) < p.y + H - 0.05;
+            if (ox > 0.02 && oz > 0.02 && yOverlap) return false;
+        }
         return true;
     }
 
@@ -512,7 +534,17 @@ export class BuildController {
         this._ghost.position.set(target.x, target.y, target.z);
         this._applyGhostRotation();
         this._ghostValid = this._isPositionValid(target.x, target.y, target.z);
-        if (this._ghost.material) this._ghost.material.color.setHex(this._ghostValid ? this._ghostBaseColor() : 0xef4444);
+
+        const prevStable = this._ghostStable;
+        if (this._ghostValid && this.boxSystem.predictStable) {
+            const r = this._effRot();
+            this._ghostStable = this.boxSystem.predictStable(this._shapeType(), target.x, target.y, target.z, r.x, r.y, r.z);
+        } else {
+            this._ghostStable = true;
+        }
+        if (prevStable !== this._ghostStable) this._updateHint();
+
+        if (this._ghost.material) this._ghost.material.color.setHex(this._ghostColor());
         this._lastPosition = target;
         this.canvas.style.cursor = this._ghostValid ? 'crosshair' : 'not-allowed';
     }
@@ -585,10 +617,8 @@ export class BuildController {
         if (!this.isActive) return;
         if (e.button !== 0) return;
 
-        // ⭐ Double-check cooldown giữa chừng
         const cdCheck = _checkBuildCooldown();
         if (!cdCheck.ok) {
-            // Đang cooldown → tự tắt build
             this.setEnabled(false);
             if (window.interactionSystem) window.interactionSystem.setTool('navigate');
             if (window.contextMenu) { window.contextMenu.currentTool = 'navigate'; window.contextMenu._refreshToolUI(); }
@@ -613,6 +643,8 @@ export class BuildController {
                     }
                 });
                 this._clearCementHighlights();
+                // Gỡ xi măng có thể làm khối chìa ra mất chỗ giữ
+                this.boxSystem.checkStability();
             }
             return;
         }
@@ -621,7 +653,7 @@ export class BuildController {
             const hits = this.raycaster.intersectObjects(this.boxSystem.boxes, true);
             const box = hits.length > 0 ? this._resolveRootBox(hits[0].object) : null;
             if (box && !box.userData.carried) {
-                this.boxSystem.removeBox(box);
+                this.boxSystem.removeBox(box); // removeBox đã gọi checkStability()
                 if (this.onBoxRemoved) this.onBoxRemoved(box);
                 this._updateInfo();
             }
@@ -636,31 +668,35 @@ export class BuildController {
         this._lastPlaceTime = now;
         const r = this._effRot();
         const bs = this.boxSystem;
+        // placed:true → đặt đúng chỗ, không "rơi từ spawnHeight"; checkStability() bên dưới quyết định có rơi hay không
+        const base = { spawnHeight: y, rotationY: r.y, placed: true };
         let placed;
         switch (shape.type) {
-            case 'beam': placed = bs.addBeam(x, z, { spawnHeight: y, rotationY: r.y, rotationX: r.x, rotationZ: r.z }); break;
-            case 'pillar': placed = bs.addPillar(x, z, { spawnHeight: y, rotationY: r.y, rotationX: r.x, rotationZ: r.z }); break;
-            case 'door': placed = bs.addDoor(x, z, 0x8b4513, { rotationY: r.y, flip: this.doorFlip }); break;
-            case 'window': placed = bs.addWindow(x, z, this.color, { rotationY: r.y }); break;
-            case 'table': placed = bs.addTable(x, z, { rotationY: r.y, spawnHeight: y }); break;
-            case 'chair': placed = bs.addChair(x, z, { rotationY: r.y, spawnHeight: y }); break;
-            case 'bed': placed = bs.addBed(x, z, { rotationY: r.y, spawnHeight: y }); break;
-            case 'fridge': placed = bs.addFridge(x, z, { rotationY: r.y, spawnHeight: y }); break;
-            case 'lamp': placed = bs.addLamp(x, z, { rotationY: r.y, spawnHeight: y }); break;
-            default: placed = bs.addBox(x, z, this.color, { spawnHeight: y, shapeType: shape.type, rotationY: r.y });
+            case 'beam': placed = bs.addBeam(x, z, { ...base, rotationX: r.x, rotationZ: r.z }); break;
+            case 'pillar': placed = bs.addPillar(x, z, { ...base, rotationX: r.x, rotationZ: r.z }); break;
+            case 'door': placed = bs.addDoor(x, z, 0x8b4513, { ...base, flip: this.doorFlip }); break;
+            case 'window': placed = bs.addWindow(x, z, this.color, base); break;
+            case 'table': placed = bs.addTable(x, z, base); break;
+            case 'chair': placed = bs.addChair(x, z, base); break;
+            case 'bed': placed = bs.addBed(x, z, base); break;
+            case 'fridge': placed = bs.addFridge(x, z, base); break;
+            case 'lamp': placed = bs.addLamp(x, z, base); break;
+            default: placed = bs.addBox(x, z, this.color, { ...base, shapeType: shape.type });
         }
 
         if (placed) {
             placed.userData.targetY = y;
-            placed.userData.isFalling = false;
-            placed.userData.velocityX = 0; placed.userData.velocityY = 0; placed.userData.velocityZ = 0;
             placed.position.y = y;
             if (shape.type !== 'beam') this._autoCement(placed);
         }
 
         if (placed && this.onBoxPlaced) this.onBoxPlaced(placed);
         this._updateInfo();
-        if (bs._recomputeSupport) bs._recomputeSupport();
+
+        // ⭐ Vật lý kết cấu: khối không có chỗ đỡ sẽ rơi xuống
+        if (bs.checkStability) bs.checkStability();
+        this._ghostStable = true;
+        this._updateGhost();
     }
 
     _onKeyDown(e) {

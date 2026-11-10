@@ -2,8 +2,8 @@
 // idle-events.js — v4 (Local Quotes + Mood System)
 // Trách nhiệm: Xử lý các hành động ngẫu nhiên khi Model rảnh rỗi.
 // ═══════════════════════════════════════════════════════════════
-import { EMOTION_POOLS } from './emotion-controller.js?v=34';
-import { getMood } from './ai-chat/ai-mood.js?v=2'; // ⭐ Import Mood System
+import { EMOTION_POOLS } from '../emotion-controller.js?v=34';
+import { getMood } from '../chat/ai-mood.js?v=2'; // ⭐ Import Mood System
 
 // ⭐ Bộ câu nói local cho các hành động idle (0 token)
 const IDLE_QUOTES = {

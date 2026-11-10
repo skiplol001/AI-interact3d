@@ -1,0 +1,39 @@
+﻿# VẼ CHÂN DUNG
+
+## 1. Tỷ lệ khuôn mặt chuẩn (người thật)
+- Mắt nằm ở 1/2 chiều cao đầu (không phải 2/3 như nhiều người nghĩ)
+- Khoảng cách 2 mắt = 1 độ rộng mắt
+- Mũi dài từ đường mắt đến 2/3 khoảng cách mắt-cằm
+- Miệng ở 1/3 khoảng cách mũi-cằm
+- Tai từ đường mắt đến mũi
+
+## 2. Vẽ MẮT
+- Cấu trúc: lòng trắng (sclera) + mống mắt (iris) + đồng tử (pupil) + mí trên/dưới
+- Mí trên dày hơn mí dưới 2-3 lần
+- Highlight lớn 1 bên + highlight nhỏ đối diện → mắt có sức sống
+- Lông mi vẽ từng sợi từ chân mí trên, cong ra ngoài
+- Lông mày cách mắt 1 khoảng = chiều cao mắt
+
+## 3. Vẽ MŨI
+- Đơn giản hóa thành 3 phần: sống mũi, đầu mũi, 2 cánh mũi
+- Người Việt: sống mũi thấp, cánh mũi rộng vừa
+- Đổ bóng ở 2 bên sống mũi + dưới đầu mũi
+- KHÔNG vẽ viền mũi trừ khi style comic
+
+## 4. Vẽ MIỆNG
+- Môi trên mỏng hơn môi dưới (môi trên ~1/3, môi dưới ~2/3)
+- Đường giữa miệng có chỗ lõm nhẹ
+- Cười: khóe miệng kéo lên + má phồng
+- Khi nói: chỉ môi dưới di chuyển chính
+
+## 5. Vẽ TÓC
+- Chia thành từng "chùm" (clump) thay vì từng sợi
+- Bắt đầu từ đường chân tóc, chảy theo hình đầu
+- Highlight ở đỉnh đầu nơi ánh sáng chiếu trực tiếp
+- Tóc mai 2 bên frame khuôn mặt
+
+## 6. Biểu cảm
+- Vui: mắt cong hình chữ U ngược, miệng mở
+- Buồn: mắt nhìn xuống, lông mày chụm, miệng cong xuống
+- Giận: lông mày chéo xuống, mắt híp, răng nghiến
+- Ngạc nhiên: mắt mở to, miệng tròn O

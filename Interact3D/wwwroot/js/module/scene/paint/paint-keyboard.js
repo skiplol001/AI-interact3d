@@ -1,10 +1,17 @@
 ﻿// ═══════════════════════════════════════════════════════════════
-// paint-keyboard.js — v2 (preventDefault for Ctrl+Z/Y)
+// paint-keyboard.js — v4
 // ═══════════════════════════════════════════════════════════════
 
 export const keyboardMixin = {
     _onKeyDown(e) {
         if (!this.isOpen) return;
+
+        // Đang mở hộp thoại Sketch → chỉ xử lý Esc
+        if (document.getElementById('paint-sketch-modal')) {
+            if (e.key === 'Escape') this._closeSketchDialog();
+            return;
+        }
+
         const tag = e.target.tagName;
         if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
         const key = e.key.toLowerCase();
@@ -13,6 +20,7 @@ export const keyboardMixin = {
         if (e.key === 'Escape') {
             if (this._curveState) {
                 this._curveState = null;
+                this._isDrawing = false;
                 this.overlayCtx.clearRect(0, 0, this.CANVAS_W, this.CANVAS_H);
                 return;
             }
@@ -28,24 +36,24 @@ export const keyboardMixin = {
             return;
         }
 
-        // ⭐ Ctrl+Z (undo) — preventDefault để browser không bắt
+        // Ctrl+Z (undo)
         if ((e.ctrlKey || e.metaKey) && key === 'z' && !e.shiftKey) {
             e.preventDefault();
             this.undo();
             return;
         }
 
-        // ⭐ Ctrl+Y (redo) / Ctrl+Shift+Z — preventDefault
+        // Ctrl+Y / Ctrl+Shift+Z (redo)
         if ((e.ctrlKey || e.metaKey) && (key === 'y' || (key === 'z' && e.shiftKey))) {
             e.preventDefault();
             this.redo();
             return;
         }
 
-        // ⭐ Ctrl+Shift+X (crop)
-        if ((e.ctrlKey || e.metaKey) && e.shiftKey && key === 'x') {
+        // Ctrl+Shift+N (Thêm Layer mới)
+        if ((e.ctrlKey || e.metaKey) && e.shiftKey && key === 'n') {
             e.preventDefault();
-            if (this._selection) this._cropToSelection();
+            this._createLayer();
             return;
         }
 
@@ -82,17 +90,11 @@ export const keyboardMixin = {
 
         // ─── Size ───
         if (e.key === '[') {
-            this.size = Math.max(1, this.size - 2);
-            this.overlay.querySelector('#paint-size-slider').value = this.size;
-            this.overlay.querySelector('#paint-size-val').textContent = this.size;
-            this._updateBrushCursorSize();
+            this._setSize(this.size - Math.max(1, Math.round(this.size * 0.1)));
             return;
         }
         if (e.key === ']') {
-            this.size = Math.min(300, this.size + 2);
-            this.overlay.querySelector('#paint-size-slider').value = this.size;
-            this.overlay.querySelector('#paint-size-val').textContent = this.size;
-            this._updateBrushCursorSize();
+            this._setSize(this.size + Math.max(1, Math.round(this.size * 0.1)));
             return;
         }
 

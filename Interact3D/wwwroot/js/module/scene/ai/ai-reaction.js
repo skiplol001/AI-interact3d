@@ -1,10 +1,10 @@
 // ═══════════════════════════════════════════════════════════════
 // ai-reaction.js — v15 (Max Local Cache + Mood System)
 // Trách nhiệm: Phản ứng tự động của nhân vật (grab, chọc, ném...).
-// Tích hợp Mood để thay đổi thái độ (Tsundere, Lạnh nhạt, Cọc).
+// Tích hợp Mood để thay đổi thái độ (Tsundere, Lạnh nhạt).
 // ═══════════════════════════════════════════════════════════════
-import { askGroq, MODEL_CHAIN, showPopup } from './ai-shared.js?v=20';
-import { getMood } from './ai-chat/ai-mood.js?v=2'; // ⭐ Import Mood
+import { askGroq, MODEL_CHAIN, showPopup } from './ai-shared.js?v=21';
+import { getMood } from '../chat/ai-mood.js?v=2'; 
 
 const MODES = ['gentle', 'normal', 'savage'];
 const HISTORY_MAX = 2;

@@ -1,5 +1,5 @@
 ﻿// ═══════════════════════════════════════════════════════════════
-// ai-command.js — createAITools v5 (Thêm Switch Model)
+// ai-command.js — v6 (Thêm Kick Box)
 // ═══════════════════════════════════════════════════════════════
 import * as THREE from 'https://esm.sh/three@0.160.0';
 
@@ -88,7 +88,7 @@ export function createAITools(deps) {
             boxes: boxSystem.getAllBoxesInfo(maxBoxes, cPos),
             boundary: getBoundary(),
             availableColors: boxSystem.constructor.getAvailableColorNames(),
-            availableModels: window.availableModels?.map(m => m.name) || [], // ⭐ Thêm danh sách model
+            availableModels: window.availableModels?.map(m => m.name) || [],
         };
     }
 
@@ -152,7 +152,7 @@ export function createAITools(deps) {
     }
 
     // ═══════════════════════════════════════════════════════════
-    // Pickup / drop
+    // Pickup / Drop / Kick
     // ═══════════════════════════════════════════════════════════
     async function toolWalkToPickup(boxId) {
         assertNotBusy('toolWalkToPickup');
@@ -163,6 +163,19 @@ export function createAITools(deps) {
         characterCtrl.walkToPickup(box);
         await waitUntil(() => characterCtrl.state === 'carryIdle');
         return { ok: true, pickedId: box.userData.id };
+    }
+
+    async function toolKickBox(boxId) {
+        assertNotBusy('toolKickBox');
+        if (characterCtrl.carriedBox) throw new Error('Đang mang box — phải đặt xuống trước');
+        const box = boxSystem.getBoxById(boxId);
+        if (!box) throw new Error(`Không tìm thấy box "${boxId}"`);
+
+        characterCtrl.walkToKickBox(box);
+
+        // Đợi đến khi animation đá xong và state trở về idle
+        await waitUntil(() => characterCtrl.state === 'idle');
+        return { ok: true, kickedId: box.userData.id };
     }
 
     async function toolWalkToDropNearCamera(offset = 2.0) {
@@ -256,7 +269,6 @@ export function createAITools(deps) {
         return { ok: true, id: box.userData.id, color: box.userData.colorName };
     }
 
-    // ⭐ Hàm đổi Model
     async function toolSwitchModel(modelName) {
         if (typeof window.switchCharacterModel !== 'function') {
             throw new Error('Tính năng đổi model chưa được khởi tạo.');
@@ -282,12 +294,13 @@ export function createAITools(deps) {
             case 'turn': return toolTurn(args.direction, args.degrees);
             case 'lookAtCamera': return toolLookAtCamera();
             case 'walkToPickup': return toolWalkToPickup(args.boxId);
+            case 'kickBox': return await toolKickBox(args.boxId); // ⭐ Thêm case Kick Box
             case 'walkToDropNearCamera': return toolWalkToDropNearCamera(args.offset);
             case 'walkToDropAt': return toolWalkToDropAt(args.x, args.z);
             case 'walkToDropAtNearest': return toolWalkToDropAtNearest(args.color);
             case 'walkToDropDirection': return toolWalkToDropDirection(args.direction, args.distance);
             case 'spawnBox': return toolSpawnBox(args.color, args.x, args.z, args.spawnHeight);
-            case 'switchModel': return await toolSwitchModel(args.modelName); // ⭐ Thêm case
+            case 'switchModel': return await toolSwitchModel(args.modelName);
             default: throw new Error(`Tool không tồn tại: "${tool}"`);
         }
     }
@@ -315,12 +328,13 @@ export function createAITools(deps) {
         toolTurn,
         toolLookAtCamera,
         toolWalkToPickup,
+        toolKickBox,
         toolWalkToDropNearCamera,
         toolWalkToDropAt,
         toolWalkToDropAtNearest,
         toolWalkToDropDirection,
         toolSpawnBox,
-        toolSwitchModel, // ⭐ Export
+        toolSwitchModel,
         executeCommand,
         executeSequence,
     };

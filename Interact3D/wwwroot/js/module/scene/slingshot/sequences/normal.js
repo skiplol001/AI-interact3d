@@ -8,11 +8,7 @@ export async function normalSequence(self) {
     const ctrl = self.ctrl;
     if (!ctrl) return;
 
-    // ═══════════════════════════════════════════════════════════
-    // PHASE 1: ĐẾN CHỖ NÁ & BẮT ĐẦU CHUẨN BỊ
-    // ═══════════════════════════════════════════════════════════
-    await self._waitForRockExplosion();
-
+    // ═══ PHASE 1: ĐẾN CHỖ NÁ & BẮT ĐẦU CHUẨN BỊ ═══
     if (window.emotionCtrl) window.emotionCtrl.trigger('surprised', { force: true });
     await self._delay(500);
 
@@ -33,9 +29,7 @@ export async function normalSequence(self) {
     self._showLine(pickLine(SEQ_LINES.normal.dissNá), 'normal');
     await self._delay(2000);
 
-    // ═══════════════════════════════════════════════════════════
-    // PHASE 2: RẶN CHIÊU - MA PHÁP TIẾN HÓA TỪ TỪ
-    // ═══════════════════════════════════════════════════════════
+    // ═══ PHASE 2: RẶN CHIÊU - MA PHÁP TIẾN HÓA TỪ TỪ ═══
     self._showLine('Nhìn cái ná này là thấy ngu rồi 😏', 'normal');
     if (window.emotionCtrl) window.emotionCtrl.trigger('taunt', { force: true });
     await self._delay(1000);
@@ -78,7 +72,6 @@ export async function normalSequence(self) {
     // --- Giai đoạn 3: Cực đại ma pháp (Sigil bùng nổ, trụ sáng, vòng bay) ---
     self._showLine('Gia tăng ma lực... phá hủy! 🔥', 'angry');
 
-    // Vòng tròn Sigil to nhất
     if (window.vfxSystem && window.vfxSystem.createMagicRitual) {
         window.vfxSystem.createMagicRitual(ringPos, {
             layers: [
@@ -91,7 +84,6 @@ export async function normalSequence(self) {
         });
     }
 
-    // Hiệu ứng vòng hào quang bay lơ lửng
     if (window.vfxSystem && window.vfxSystem.createOrbitingRing) {
         for (let i = 0; i < 8; i++) {
             setTimeout(() => {
@@ -104,7 +96,6 @@ export async function normalSequence(self) {
         }
     }
 
-    // Trụ sáng ma pháp dựng đứng
     if (window.vfxSystem && window.vfxSystem.createMagicGate) {
         window.vfxSystem.createMagicGate(ringPos, new THREE.Vector3(0, 1, 0), 0xff0044, 1.0);
     }
@@ -113,9 +104,7 @@ export async function normalSequence(self) {
     self._fovKick(0.6);
     await self._delay(1500);
 
-    // ═══════════════════════════════════════════════════════════
-    // PHASE 3: SÚT BAY CÂY NÁ (FULL POWER KICK)
-    // ═══════════════════════════════════════════════════════════
+    // ═══ PHASE 3: SÚT BAY CÂY NÁ (FULL POWER KICK) ═══
     const kickDur = ctrl.actions['kick'] ? (ctrl.actions['kick'].getClip().duration * 1000) : 1000;
 
     if (window.emotionCtrl) window.emotionCtrl.trigger('kick', { force: true });
@@ -183,9 +172,7 @@ export async function normalSequence(self) {
         tick();
     });
 
-    // ═══════════════════════════════════════════════════════════
-    // PHASE 4: NỔ TUNG & CLEANUP
-    // ═══════════════════════════════════════════════════════════
+    // ═══ PHASE 4: NỔ TUNG & CLEANUP ═══
     const impactPos = sl.position.clone();
     if (window.vfxSystem) {
         if (window.vfxSystem.createMidAirExplosion) window.vfxSystem.createMidAirExplosion(impactPos, FLY_COLOR);

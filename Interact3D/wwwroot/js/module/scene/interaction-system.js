@@ -3,7 +3,7 @@
 // ═══════════════════════════════════════════════════════════════
 import * as THREE from 'https://esm.sh/three@0.160.0';
 import { EMOTION_POOLS } from './emotion-controller.js?v=34';
-import { addMood } from './ai-chat/ai-mood.js?v=2';
+import { addMood } from './chat/ai-mood.js?v=2';
 
 const HITBOX_CONFIG = {
     head: { radius: 0.22, offsetY: 0.05 },

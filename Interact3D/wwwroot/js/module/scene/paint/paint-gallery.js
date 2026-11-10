@@ -1,114 +1,157 @@
 ﻿// ═══════════════════════════════════════════════════════════════
-// paint-gallery.js — v3 (Compress base layer → fix QuotaExceededError)
+// paint-gallery.js — v5 (IndexedDB: tranh + bảng màu + bản nháp · Blob PNG bất đồng bộ)
 // ═══════════════════════════════════════════════════════════════
-import { escapeHtml } from './paint-ui.js?v=3';
+import { escapeHtml } from './paint-ui.js?v=6';
 
-const DB_NAME = 'paint_gallery_db';
-const DB_VERSION = 1;
-const STORE_NAME = 'drawings';
+const DB_NAME = 'paint_studio_db';
+const DB_VERSION = 3; // ⭐ v3: thêm store "drafts"
+const STORE_DRAWINGS = 'drawings';
+const STORE_PALETTES = 'palettes';
+const STORE_DRAFTS = 'drafts';
+const DRAFT_ID = 'current';
+
+let _dbPromise = null;
 
 export function openGalleryDB() {
-    return new Promise((resolve, reject) => {
+    if (_dbPromise) return _dbPromise;
+    _dbPromise = new Promise((resolve, reject) => {
         const req = indexedDB.open(DB_NAME, DB_VERSION);
         req.onupgradeneeded = (e) => {
             const db = e.target.result;
-            if (!db.objectStoreNames.contains(STORE_NAME)) {
-                const store = db.createObjectStore(STORE_NAME, { keyPath: 'id' });
+            if (!db.objectStoreNames.contains(STORE_DRAWINGS)) {
+                const store = db.createObjectStore(STORE_DRAWINGS, { keyPath: 'id' });
                 store.createIndex('ts', 'ts');
             }
-        };
-        req.onsuccess = () => resolve(req.result);
-        req.onerror = () => reject(req.error);
-    });
-}
-
-export async function galleryPut(item) {
-    const db = await openGalleryDB();
-    return new Promise((res, rej) => {
-        const tx = db.transaction(STORE_NAME, 'readwrite');
-        tx.objectStore(STORE_NAME).put(item);
-        tx.oncomplete = () => res(true);
-        tx.onerror = () => rej(tx.error);
-    });
-}
-
-export async function galleryGetAll() {
-    const db = await openGalleryDB();
-    return new Promise((res, rej) => {
-        const tx = db.transaction(STORE_NAME, 'readonly');
-        const req = tx.objectStore(STORE_NAME).getAll();
-        req.onsuccess = () => res((req.result || []).sort((a, b) => b.ts - a.ts));
-        req.onerror = () => rej(req.error);
-    });
-}
-
-export async function galleryGet(id) {
-    const items = await galleryGetAll();
-    return items.find(x => x.id === id) || null;
-}
-
-export async function galleryDelete(id) {
-    const db = await openGalleryDB();
-    return new Promise((res, rej) => {
-        const tx = db.transaction(STORE_NAME, 'readwrite');
-        tx.objectStore(STORE_NAME).delete(id);
-        tx.oncomplete = () => res(true);
-        tx.onerror = () => rej(tx.error);
-    });
-}
-
-export async function galleryClear() {
-    const db = await openGalleryDB();
-    return new Promise((res, rej) => {
-        const tx = db.transaction(STORE_NAME, 'readwrite');
-        tx.objectStore(STORE_NAME).clear();
-        tx.oncomplete = () => res(true);
-        tx.onerror = () => rej(tx.error);
-    });
-}
-
-// ⭐ NÉN DỮ LIỆU: Dùng JPEG cho Base Layer để giảm 90% dung lượng
-export function serializeStrokes(strokes) {
-    return strokes.map(g => g.map(s => {
-        if (s.type === 'custom_paste' && s.imgData) {
-            const t = document.createElement('canvas');
-            t.width = s.imgData.width;
-            t.height = s.imgData.height;
-            const tc = t.getContext('2d');
-
-            if (s.isBaseLayer) {
-                // Base layer: nền trắng + JPEG (giảm từ 5MB -> 200KB)
-                tc.fillStyle = '#ffffff';
-                tc.fillRect(0, 0, t.width, t.height);
-                tc.putImageData(s.imgData, 0, 0);
-                return { ...s, imgData: null, imgDataB64: t.toDataURL('image/jpeg', 0.75) };
+            if (!db.objectStoreNames.contains(STORE_PALETTES)) {
+                db.createObjectStore(STORE_PALETTES, { keyPath: 'id' });
             }
+            if (!db.objectStoreNames.contains(STORE_DRAFTS)) {
+                db.createObjectStore(STORE_DRAFTS, { keyPath: 'id' });
+            }
+        };
+        req.onsuccess = () => {
+            const db = req.result;
+            db.onversionchange = () => { db.close(); _dbPromise = null; };
+            resolve(db);
+        };
+        req.onerror = () => { _dbPromise = null; reject(req.error); };
+    });
+    return _dbPromise;
+}
 
-            // Các khối float (custom_paste): giữ PNG để bảo toàn độ trong suốt
-            tc.putImageData(s.imgData, 0, 0);
-            return { ...s, imgData: null, imgDataB64: t.toDataURL('image/png') };
-        }
-        return s;
+function _tx(store, mode, fn) {
+    return openGalleryDB().then(db => new Promise((res, rej) => {
+        const tx = db.transaction(store, mode);
+        let out;
+        try { out = fn(tx.objectStore(store)); } catch (e) { rej(e); return; }
+        tx.oncomplete = () => res(out && 'result' in out ? out.result : true);
+        tx.onerror = () => rej(tx.error);
+        tx.onabort = () => rej(tx.error);
     }));
 }
 
-export async function deserializeStrokes(ser) {
+export function galleryPut(item) { return _tx(STORE_DRAWINGS, 'readwrite', s => s.put(item)); }
+
+export async function galleryGetAll() {
+    const r = await _tx(STORE_DRAWINGS, 'readonly', s => s.getAll());
+    return (r || []).sort((a, b) => b.ts - a.ts);
+}
+
+export async function galleryGet(id) {
+    const r = await _tx(STORE_DRAWINGS, 'readonly', s => s.get(id));
+    return r || null;
+}
+
+export function galleryDelete(id) { return _tx(STORE_DRAWINGS, 'readwrite', s => s.delete(id)); }
+export function galleryClear() { return _tx(STORE_DRAWINGS, 'readwrite', s => s.clear()); }
+
+// ═══════════════════════════════════════════════════════════════
+// PALETTE
+// ═══════════════════════════════════════════════════════════════
+export function savePaletteToDB(palette) { return _tx(STORE_PALETTES, 'readwrite', s => s.put(palette)); }
+export async function getPalettesFromDB() {
+    const r = await _tx(STORE_PALETTES, 'readonly', s => s.getAll());
+    return r || [];
+}
+
+// ═══════════════════════════════════════════════════════════════
+// ⭐ DRAFT (tự động lưu) — nằm trong IndexedDB, không còn dính giới hạn 5MB của localStorage
+// ═══════════════════════════════════════════════════════════════
+export function draftPut(data) { return _tx(STORE_DRAFTS, 'readwrite', s => s.put({ ...data, id: DRAFT_ID })); }
+export async function draftGet() {
+    const r = await _tx(STORE_DRAFTS, 'readonly', s => s.get(DRAFT_ID));
+    return r || null;
+}
+export function draftDelete() { return _tx(STORE_DRAFTS, 'readwrite', s => s.delete(DRAFT_ID)); }
+
+// ═══════════════════════════════════════════════════════════════
+// ⭐ SERIALIZATION (Layer → Blob PNG, bất đồng bộ + cache theo _rev)
+// ═══════════════════════════════════════════════════════════════
+function canvasToBlob(canvas) {
+    return new Promise((res, rej) => {
+        canvas.toBlob(b => (b ? res(b) : rej(new Error('toBlob failed'))), 'image/png');
+    });
+}
+
+export async function serializeLayers(layers) {
     const out = [];
-    for (const g of ser) {
-        const ng = [];
-        for (const s of g) {
-            if (s.type === 'custom_paste' && s.imgDataB64) {
-                const img = new Image();
-                await new Promise(r => { img.onload = r; img.src = s.imgDataB64; });
-                const t = document.createElement('canvas');
-                t.width = img.width;
-                t.height = img.height;
-                const tc = t.getContext('2d');
-                tc.drawImage(img, 0, 0);
-                ng.push({ ...s, imgData: tc.getImageData(0, 0, img.width, img.height), imgDataB64: null });
-            } else ng.push(s);
+    for (const l of layers) {
+        const rev = l._rev || 0;
+        let blob = l._blob;
+        if (!blob || l._blobRev !== rev) {
+            blob = await canvasToBlob(l.canvas);
+            l._blob = blob;
+            l._blobRev = rev;
         }
-        out.push(ng);
+        out.push({
+            id: l.id, name: l.name, visible: l.visible,
+            opacity: l.opacity, blendMode: l.blendMode, locked: l.locked,
+            blob,
+        });
+    }
+    return out;
+}
+
+function _loadImage(src) {
+    return new Promise((res, rej) => {
+        const img = new Image();
+        img.onload = () => res(img);
+        img.onerror = rej;
+        img.src = src;
+    });
+}
+
+export async function deserializeLayers(ser, w, h) {
+    const out = [];
+    for (const s of ser) {
+        let source = null;
+        let revoke = null;
+        try {
+            if (s.blob) {
+                if (typeof createImageBitmap === 'function') {
+                    source = await createImageBitmap(s.blob);
+                } else {
+                    revoke = URL.createObjectURL(s.blob);
+                    source = await _loadImage(revoke);
+                }
+            } else if (s.dataUrl) {
+                source = await _loadImage(s.dataUrl);
+            }
+        } catch (e) {
+            console.warn('[Gallery] layer decode error:', e);
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext('2d');
+        if (source) ctx.drawImage(source, 0, 0);
+        if (source && source.close) source.close();
+        if (revoke) URL.revokeObjectURL(revoke);
+        out.push({
+            id: s.id, name: s.name, visible: s.visible,
+            opacity: s.opacity, blendMode: s.blendMode, locked: s.locked,
+            canvas, ctx, _rev: 1,
+        });
     }
     return out;
 }
@@ -197,6 +240,7 @@ export const galleryMixin = {
                 const existing = await galleryGetAll();
                 this._currentDrawingName = `Tranh ${existing.length + 1}`;
             }
+
             await galleryPut({
                 id: this._currentDrawingId,
                 name: this._currentDrawingName,
@@ -205,7 +249,7 @@ export const galleryMixin = {
                 canvasW: this.CANVAS_W,
                 canvasH: this.CANVAS_H,
                 paperKey: this.paperKey,
-                strokes: serializeStrokes(this._strokes),
+                layers: await serializeLayers(this.layers),
             });
             return true;
         } catch (e) {
@@ -300,8 +344,9 @@ export const galleryMixin = {
         try {
             const item = await galleryGet(id);
             if (!item) { this._setStatus('Không tìm thấy'); return; }
-            if (this._strokes.length > 0 && this._dirty && !confirm('Tranh chưa lưu. Tải tranh khác?')) return;
+            if (this.layers.length > 0 && this._dirty && !confirm('Tranh chưa lưu. Tải tranh khác?')) return;
 
+            this._resetSelectionState();
             this._currentDrawingId = item.id;
             this._currentDrawingName = item.name;
             this.CANVAS_W = item.canvasW;
@@ -310,17 +355,16 @@ export const galleryMixin = {
 
             this._initCanvas();
 
-            this._selection = null;
-            this._movingPixels = null;
-            this._isMovingSelection = false;
-            this._floatingShape = false;
-            this._pixelCache = null;
-            this._pixelCanvas = null;
-
-            const deser = await deserializeStrokes(item.strokes);
-            this._strokes = deser;
+            const layers = await deserializeLayers(item.layers || [], this.CANVAS_W, this.CANVAS_H);
+            if (!this.isOpen) return;
+            this.layers = layers;
+            if (this.layers.length === 0) this._createLayer('Background', { skipHistory: true });
+            this.activeLayerId = this.layers[this.layers.length - 1].id;
+            this._history = [];
             this._redoStack = [];
-            this._replayAll();
+
+            this._renderComposite();
+            this._renderLayerUI();
             this._dirty = false;
             this._fitCanvas();
             this._updateBrushCursorSize();

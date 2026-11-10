@@ -1,5 +1,6 @@
 ﻿// ═══════════════════════════════════════════════════════════════
-// character-controller.js — v11 (Fix Kick Physics & Timeout)
+// character-controller.js — v14 (AOE Kick & Magic VFX)
+// [PART 1/2] — Imports, Constructor, State, Basic Movement
 // ═══════════════════════════════════════════════════════════════
 import * as THREE from 'https://esm.sh/three@0.160.0';
 import { getPoseBox } from './pose-utils.js';
@@ -42,7 +43,7 @@ export class CharacterController {
         this._pendingNextPickup = null;
 
         this._pendingKickBox = null;
-        this._kickTimeout = null; // ⭐ Fallback timeout cho Kick
+        this._kickTimeout = null;
 
         this._onStatusChange = options.onStatusChange || null;
         this._onCarryChange = options.onCarryChange || null;
@@ -103,7 +104,7 @@ export class CharacterController {
                 else if (e.action === actions.putdown) this._onPutdownDone();
                 else if (e.action === actions.surprise) this._onSurpriseDone();
                 else if (e.action === actions.landing) this._onLandingDone();
-                else if (e.action === actions.kick) this._onKickDone(); // ⭐ LẮNG NGHE
+                else if (e.action === actions.kick) this._onKickDone();
             });
         }
     }
@@ -204,39 +205,6 @@ export class CharacterController {
         this._pendingNextPickup = null;
         this._pendingKickBox = null;
         this._setStatus('Đi tới box...');
-        this._walkingStartTs = performance.now();
-
-        const lookAt = Math.atan2(-dir.x, -dir.z);
-        this.root.rotation.y = lookAt;
-    }
-
-    walkToKickBox(boxMesh) {
-        if (this.carriedBox || ['hanging', 'falling', 'surprised', 'landing', 'kicking'].includes(this.state)) return;
-        this._skipGroundSnap = false;
-        this._lockGroundY = false;
-        this._isScriptedMove = false;
-        clearTimeout(this._landingTimeout);
-        clearTimeout(this._surprisedTimeout);
-        clearTimeout(this._kickTimeout);
-
-        const dir = new THREE.Vector3().subVectors(this.root.position, boxMesh.position);
-        dir.y = 0;
-        if (dir.lengthSq() < 0.01) dir.set(0, 0, 1);
-        dir.normalize();
-
-        const approach = boxMesh.position.clone().addScaledVector(dir, 1.2);
-        approach.y = 0;
-
-        this.target.copy(approach);
-        this.state = 'walkToBox';
-        this._playAnim('walk');
-
-        this._pendingPickup = null;
-        this._pendingDrop = false;
-        this._pendingNextPickup = null;
-        this._pendingKickBox = boxMesh;
-
-        this._setStatus('Đi tới đá box...');
         this._walkingStartTs = performance.now();
 
         const lookAt = Math.atan2(-dir.x, -dir.z);
@@ -427,28 +395,6 @@ export class CharacterController {
         this._notifyCarry();
     }
 
-    // ⭐ KHI ANIMATION ĐÁ CHẠY XONG HOẶC TIMEOUT
-    _onKickDone() {
-        clearTimeout(this._kickTimeout);
-        this._kickTimeout = null;
-
-        const box = this._pendingKickBox;
-        this._pendingKickBox = null;
-
-        if (box) {
-            const angle = this.root.rotation.y;
-            const forward = new THREE.Vector3(Math.sin(angle), 0, Math.cos(angle));
-            if (window.boxSystem && window.boxSystem.kickBox) {
-                window.boxSystem.kickBox(box, forward);
-            }
-        }
-
-        // ⭐ Luôn reset về idle dù có box hay không
-        this.state = 'idle';
-        this._playAnim('idle', 0.2);
-        this._setStatus('Đứng yên');
-    }
-
     _onPutdownDone() {
         if (!this.carriedBox) return;
         const box = this.carriedBox;
@@ -468,6 +414,60 @@ export class CharacterController {
             this._pendingNextPickup = null;
             setTimeout(() => this.walkToPickup(next), 200);
         }
+    }
+
+// ═══ TIẾP THEO Ở PART 2/2 ═══
+    // ═══════════════════════════════════════════════════════════════
+    // character-controller.js — v14 (AOE Kick & Magic VFX)
+    // [PART 2/2] — Kick Logic, VFX, Update Loop, Cleanup
+    // ═══════════════════════════════════════════════════════════════
+
+    // ⭐ LOGIC ĐÁ AOE & VFX MA PHÁP
+    walkToKickBox(boxMesh) {
+        if (this.carriedBox || ['hanging', 'falling', 'surprised', 'landing', 'kicking'].includes(this.state)) return;
+        this._skipGroundSnap = false;
+        this._lockGroundY = false;
+        this._isScriptedMove = false;
+        clearTimeout(this._landingTimeout);
+        clearTimeout(this._surprisedTimeout);
+        clearTimeout(this._kickTimeout);
+
+        const dir = new THREE.Vector3().subVectors(this.root.position, boxMesh.position);
+        dir.y = 0;
+        if (dir.lengthSq() < 0.01) dir.set(0, 0, 1);
+        dir.normalize();
+
+        const approach = boxMesh.position.clone().addScaledVector(dir, 1.2);
+        approach.y = 0;
+
+        this.target.copy(approach);
+        this.state = 'walkToBox';
+        this._playAnim('walk');
+
+        this._pendingPickup = null;
+        this._pendingDrop = false;
+        this._pendingNextPickup = null;
+        this._pendingKickBox = boxMesh;
+
+        this._setStatus('Đang tích tụ ma pháp...');
+        this._walkingStartTs = performance.now();
+
+        // ⭐ VFX: Vòng ma pháp chuẩn bị dưới chân
+        if (window.vfxSystem && window.vfxSystem.createMagicRitual) {
+            const ringPos = this.root.position.clone();
+            ringPos.y = 0.05;
+            window.vfxSystem.createMagicRitual(ringPos, {
+                layers: [
+                    { tex: 'magicTex', scale: 8, color: 0xffaa00, opacity: 0.8, spinDir: 1, spinSpeed: 0.05 },
+                    { tex: 'runeTex', scale: 10, color: 0x00ffff, opacity: 0.9, spinDir: -1, spinSpeed: 0.06 }
+                ],
+                particleCount: 40, particleColor: 0xffaa00, particleSpeed: 2.5,
+                duration: 2000, cameraRecoil: 0.1
+            });
+        }
+
+        const lookAt = Math.atan2(-dir.x, -dir.z);
+        this.root.rotation.y = lookAt;
     }
 
     update(dt) {
@@ -578,9 +578,17 @@ export class CharacterController {
         if (this.state === 'walkToBox' && this._pendingKickBox) {
             this.state = 'kicking';
             this._playAnim('kick', 0.15);
-            this._setStatus('Đang đá...');
+            this._setStatus('SÚT BAY!');
 
-            // ⭐ FALLBACK: Nếu sau 1.5s animation không báo finished, tự động kết thúc
+            // ⭐ VFX: Bùng nổ lực khi sút
+            if (window.vfxSystem && window.vfxSystem.createFireExplosion) {
+                const pos = this.root.position.clone();
+                pos.y = 1.0;
+                window.vfxSystem.createFireExplosion(pos, 0xffaa00);
+                if (window.vfxSystem.createDust) window.vfxSystem.createDust(this.root.position.clone());
+            }
+            if (window.emotionCtrl) window.emotionCtrl.trigger('angry', { force: true });
+
             clearTimeout(this._kickTimeout);
             this._kickTimeout = setTimeout(() => this._onKickDone(), 1500);
             return;
@@ -594,6 +602,28 @@ export class CharacterController {
         this.state = this.carriedBox ? 'carryIdle' : 'idle';
         this._playAnim(this.carriedBox ? 'carryIdle' : 'idle');
         this._setStatus(this.carriedBox ? 'Đang mang box' : 'Đứng yên');
+    }
+
+    _onKickDone() {
+        clearTimeout(this._kickTimeout);
+        this._kickTimeout = null;
+
+        const box = this._pendingKickBox;
+        this._pendingKickBox = null;
+
+        if (box) {
+            const angle = this.root.rotation.y;
+            const forward = new THREE.Vector3(Math.sin(angle), 0, Math.cos(angle));
+
+            // ⭐ Gọi kickBox AOE (Truyền power=1.5 để có lực mạnh)
+            if (window.boxSystem && window.boxSystem.kickBox) {
+                window.boxSystem.kickBox(box, forward, 1.5);
+            }
+        }
+
+        this.state = 'idle';
+        this._playAnim('idle', 0.2);
+        this._setStatus('Đứng yên');
     }
 
     _updateCarriedBoxTransform() {

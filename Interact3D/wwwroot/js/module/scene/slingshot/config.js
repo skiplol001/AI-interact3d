@@ -1,5 +1,5 @@
 ﻿// ═══════════════════════════════════════════════════════════════
-// slingshot/config.js — Constants & SEQ_LINES
+// slingshot/config.js — v3 (Cannon-shell AOE + long range)
 // ═══════════════════════════════════════════════════════════════
 
 // ═══ PHYSICS CONSTANTS ═══
@@ -8,11 +8,21 @@ export const INITIAL_SPEED_FACTOR = 0.55;
 export const ACCEL_RATE = 90;
 export const PHASE_DURATIONS = [0.15, 0.2];
 export const PHYSICS_STEP = 0.02;
-export const TRAJ_STEPS = 150; // ⭐ Giảm từ 400 -> 150 để tối ưu CPU, quỹ đạo vẫn đủ mượt
+export const TRAJ_STEPS = 150; // GIỮ 150: aim.js import config không có ?v nên có thể đang cache bản cũ
 export const MAX_FLIGHT_TIME = 12;
 export const WORLD_LIMIT = 500;
 export const GROUND_Y = 0.08;
 export const HIT_RADIUS = { box: 0.8, trash: 1.2, char: 0.8 };
+
+// ═══ ĐẠN PHÁO (AOE) ═══
+// radius = clamp(MIN + speed * PER_POWER, MIN, MAX)   (speed = vận tốc đạn lúc nổ, m/s)
+export const BLAST_RADIUS_MIN = 2.5;
+export const BLAST_RADIUS_PER_POWER = 0.16;
+export const BLAST_RADIUS_MAX = 11;
+// Bỏ qua va chạm "đang nằm trong" vật thể trong khoảng thời gian đầu sau khi bắn (giây)
+export const MUZZLE_GRACE = 0.08;
+// Mật độ sương mù tối đa khi đạn đang bay (để nhìn được đường đạn xa)
+export const FOG_FLIGHT_DENSITY = 0.0035;
 
 // ═══ CAMERA ═══
 export const CHASE_CAM = true;

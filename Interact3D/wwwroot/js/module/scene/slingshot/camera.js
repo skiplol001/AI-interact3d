@@ -2,8 +2,7 @@
 // slingshot/camera.js — Shake, FOV, chase cam, cinematic kick
 // ═══════════════════════════════════════════════════════════════
 import * as THREE from 'https://esm.sh/three@0.160.0';
-import { CHASE_CAM, CHASE_BACK, CHASE_UP, SEQ_LINES, pickLine } from './config.js';
-
+import { CHASE_CAM, CHASE_BACK, CHASE_UP, SEQ_LINES, pickLine } from './config.js?v=6';
 export const cameraMixin = {
     _shakeScreen(intensity, duration) {
         this._shake = { intensity, duration, start: performance.now() };

@@ -1,0 +1,361 @@
+﻿════════════════════════════════════════════════════════════════════════════════
+PROJECT STRUCTURE — E:\c#\proj_tn\Interact3D
+Generated: 2026-11-10 16:39:48
+════════════════════════════════════════════════════════════════════════════════
+
+────────────────────────────────────────────────────────────────────────────────
+📁 TREE (file [version] — size, lines)
+────────────────────────────────────────────────────────────────────────────────
+├── 📂 Interact3D/
+│   ├── 📂 Controllers/
+│   │   ├── 📂 API/
+│   │   └── 📂 Pages/
+│   ├── 📂 Data/
+│   ├── 📂 DTOs/
+│   │   ├── 📂 Auth/
+│   │   ├── 📂 Common/
+│   │   └── 📂 Model/
+│   ├── 📂 Helpers/
+│   ├── 📂 Middlewares/
+│   ├── 📂 Models/
+│   ├── 📂 Properties/
+│   │   └── launchSettings.json  (642B, 23L)
+│   ├── 📂 Services/
+│   │   ├── 📂 Interfaces/
+│   ├── 📂 Views/
+│   │   ├── 📂 Admin/
+│   │   ├── 📂 Auth/
+│   │   ├── 📂 Home/
+│   │   ├── 📂 Shared/
+│   │   │   ├── _Layout.cshtml.css  (925B, 40L)
+│   ├── 📂 wwwroot/
+│   │   ├── 📂 css/
+│   │   │   ├── canvas-ui.css  (21.0KB, 684L)
+│   │   │   └── site.css  (667B, 25L)
+│   │   ├── 📂 js/
+│   │   │   ├── 📂 module/
+│   │   │   │   └── 📂 scene/
+│   │   │   │       ├── 📂 ai/
+│   │   │   │       │   ├── ai-command.js [v6]  (16.5KB, 298L)
+│   │   │   │       │   ├── ai-controller.js  (7.1KB, 137L)
+│   │   │   │       │   ├── ai-debug.js  (11.0KB, 297L)
+│   │   │   │       │   ├── ai-gemini.js  (26.0KB, 443L)
+│   │   │   │       │   ├── ai-reaction.js  (67.9KB, 697L)
+│   │   │   │       │   ├── ai-shared.js [v21]  (30.7KB, 477L)
+│   │   │   │       │   ├── ai-ui-image-uploader.js  (6.0KB, 128L)
+│   │   │   │       │   ├── ai-vision-handler.js  (4.8KB, 82L)
+│   │   │   │       │   ├── idle-events.js  (10.3KB, 220L)
+│   │   │   │       │   └── reactive-emotes.js [v3]  (5.3KB, 129L)
+│   │   │   │       ├── 📂 chat/
+│   │   │   │       │   ├── ai-chat-config.js [v6]  (16.5KB, 219L)
+│   │   │   │       │   ├── ai-chat-helpers.js [v15]  (29.5KB, 389L)
+│   │   │   │       │   ├── ai-chat-main.js [v25]  (28.3KB, 537L)
+│   │   │   │       │   └── ai-mood.js  (3.4KB, 59L)
+│   │   │   │       ├── 📂 command/
+│   │   │   │       │   ├── ai-command-config.js [v15]  (12.7KB, 145L)
+│   │   │   │       │   ├── ai-command-executor.js  (8.7KB, 155L)
+│   │   │   │       │   ├── ai-command-handlers.js [v15]  (30.6KB, 677L)
+│   │   │   │       │   ├── ai-command-parser.js  (23.4KB, 367L)
+│   │   │   │       │   └── ai-command-planner.js [v17]  (16.4KB, 320L)
+│   │   │   │       ├── 📂 paint/
+│   │   │   │       │   ├── paint-brush.js [v5]  (3.8KB, 81L)
+│   │   │   │       │   ├── paint-engine.js [v10]  (24.9KB, 564L)
+│   │   │   │       │   ├── paint-gallery.js [v5]  (17.3KB, 340L)
+│   │   │   │       │   ├── paint-input.js [v6]  (19.0KB, 388L)
+│   │   │   │       │   ├── paint-keyboard.js [v4]  (3.9KB, 94L)
+│   │   │   │       │   ├── paint-mode.js [v19.0]  (40.7KB, 938L)
+│   │   │   │       │   ├── paint-reactions.js  (12.4KB, 212L)
+│   │   │   │       │   ├── paint-sketch.js [v1]  (19.7KB, 356L)
+│   │   │   │       │   ├── paint-tools.js [v11]  (35.5KB, 790L)
+│   │   │   │       │   └── paint-ui.js [v6]  (31.0KB, 316L)
+│   │   │   │       ├── 📂 skills/
+│   │   │   │       │   ├── action-director.js [v9]  (14.1KB, 300L)
+│   │   │   │       │   └── magic-skills.js [v4]  (46.2KB, 864L)
+│   │   │   │       ├── 📂 slingshot/
+│   │   │   │       │   ├── 📂 sequences/
+│   │   │   │       │   │   ├── gentle.js  (4.5KB, 112L)
+│   │   │   │       │   │   ├── normal.js  (9.2KB, 182L)
+│   │   │   │       │   │   └── savage.js  (2.7KB, 54L)
+│   │   │   │       │   ├── aim.js  (14.2KB, 253L)
+│   │   │   │       │   ├── camera.js  (8.4KB, 182L)
+│   │   │   │       │   ├── config.js  (4.3KB, 91L)
+│   │   │   │       │   ├── helpers.js  (4.4KB, 97L)
+│   │   │   │       │   ├── model.js  (3.6KB, 64L)
+│   │   │   │       │   ├── physics.js  (13.5KB, 281L)
+│   │   │   │       │   └── ui.js  (3.7KB, 43L)
+│   │   │   │       ├── 📂 vfx/
+│   │   │   │       │   ├── 📂 effects/
+│   │   │   │       │   │   ├── barrage.js  (16.5KB, 273L)
+│   │   │   │       │   │   ├── explosion.js  (4.8KB, 71L)
+│   │   │   │       │   │   ├── ground.js  (4.1KB, 66L)
+│   │   │   │       │   │   ├── launch.js  (6.1KB, 137L)
+│   │   │   │       │   │   ├── magic.js  (2.0KB, 25L)
+│   │   │   │       │   │   ├── projectile.js  (24.2KB, 417L)
+│   │   │   │       │   │   ├── ritual.js  (8.8KB, 183L)
+│   │   │   │       │   │   ├── shield.js  (7.4KB, 123L)
+│   │   │   │       │   │   └── trail.js  (3.8KB, 71L)
+│   │   │   │       │   ├── effects-updater.js  (10.3KB, 179L)
+│   │   │   │       │   ├── impact-marker.js  (2.2KB, 31L)
+│   │   │   │       │   ├── pools.js  (7.9KB, 155L)
+│   │   │   │       │   ├── screen-flash.js  (1.5KB, 26L)
+│   │   │   │       │   └── textures.js  (7.1KB, 145L)
+│   │   │   │       ├── box-system.js [v41]  (46.8KB, 794L)
+│   │   │   │       ├── camera-wasd.js  (3.4KB, 77L)
+│   │   │   │       ├── character-controller.js [v14]  (27.0KB, 613L)
+│   │   │   │       ├── context-menu.js [v11]  (20.1KB, 426L)
+│   │   │   │       ├── emotion-controller.js [v34]  (29.2KB, 543L)
+│   │   │   │       ├── face-controller.js [v22]  (7.1KB, 157L)
+│   │   │   │       ├── grab-controller.js  (32.1KB, 633L)
+│   │   │   │       ├── house-manager.js [v3.1]  (30.3KB, 575L)
+│   │   │   │       ├── house-model.js [v3]  (20.6KB, 401L)
+│   │   │   │       ├── interaction-system.js  (30.3KB, 603L)
+│   │   │   │       ├── minigame-rps.js  (6.1KB, 106L)
+│   │   │   │       ├── pose-utils.js  (2.4KB, 53L)
+│   │   │   │       ├── slingshot-system.js  (29.6KB, 614L)
+│   │   │   │       ├── spring-bone.js  (3.0KB, 61L)
+│   │   │   │       ├── trash-can.js  (12.1KB, 213L)
+│   │   │   │       └── vfx-system.js  (14.9KB, 245L)
+│   │   │   ├── 📂 pages/
+│   │   │   │   └── home-3d.js [v17.0]  (49.1KB, 784L)
+│   │   │   └── site.js  (231B, 3L)
+│   │   ├── 📂 lib/
+│   │   │   ├── 📂 bootstrap/
+│   │   │   ├── 📂 jquery/
+│   │   │   ├── 📂 jquery-validation/
+│   │   │   └── 📂 jquery-validation-unobtrusive/
+│   │   ├── 📂 uploads/
+│   │   │   ├── 📂 animations/
+│   │   │   ├── 📂 faces/
+│   │   │   ├── 📂 models/
+│   │   │   │   ├── 📂 AI_test/
+│   │   │   │   │   ├── 📂 textures/
+│   │   │   │   ├── 📂 base/
+│   │   │   │   │   ├── 📂 textures/
+│   │   │   │   └── 📂 placeholder/
+│   │   │   └── 📂 thumbnails/
+│   ├── appsettings.Development.json  (127B, 8L)
+│   ├── appsettings.json  (475B, 17L)
+
+────────────────────────────────────────────────────────────────────────────────
+🔗 IMPORT MAP (file → imports [version])
+────────────────────────────────────────────────────────────────────────────────
+
+📄 Interact3D/wwwroot/js/module/scene/ai/ai-controller.js
+   → ./ai-shared.js?v=21 [v21]
+   → ./ai-debug.js?v=12 [v12]
+   → ./command/ai-command-config.js?v=15 [v15]
+   → ./command/ai-command-parser.js?v=13 [v13]
+   → ./command/ai-command-planner.js?v=17 [v17]
+   → ./command/ai-command-executor.js?v=12 [v12]
+   → ./command/ai-command-handlers.js?v=15 [v15]
+   → ./chat/ai-chat-helpers.js?v=15 [v15]
+
+📄 Interact3D/wwwroot/js/module/scene/ai/ai-gemini.js
+   → ./ai-controller.js
+   → ./chat/ai-chat-main.js?v=25 [v25]
+   → ./ai-vision-handler.js
+   → ./ai-ui-image-uploader.js
+   → ./ai-shared.js?v=21 [v21]
+   → ./ai-debug.js?v=12 [v12]
+
+📄 Interact3D/wwwroot/js/module/scene/ai/ai-reaction.js
+   → ./ai-shared.js?v=21 [v21]
+   → ./chat/ai-mood.js?v=2 [v2]
+
+📄 Interact3D/wwwroot/js/module/scene/ai/ai-shared.js
+   → ./ai-debug.js?v=12 [v12]
+
+📄 Interact3D/wwwroot/js/module/scene/ai/ai-vision-handler.js
+   → ./ai-shared.js?v=21 [v21]
+   → ./ai-debug.js
+
+📄 Interact3D/wwwroot/js/module/scene/ai/idle-events.js
+   → ../emotion-controller.js?v=34 [v34]
+   → ./chat/ai-mood.js?v=2 [v2]
+
+📄 Interact3D/wwwroot/js/module/scene/character-controller.js
+   → ./pose-utils.js
+
+📄 Interact3D/wwwroot/js/module/scene/chat/ai-chat-helpers.js
+   → ../ai-shared.js?v=21 [v21]
+   → ../../emotion-controller.js?v=34 [v34]
+   → ./ai-mood.js?v=2 [v2]
+
+📄 Interact3D/wwwroot/js/module/scene/chat/ai-chat-main.js
+   → ../ai-shared.js?v=21 [v21]
+   → ../ai-debug.js?v=12 [v12]
+   → ./ai-chat-config.js?v=6 [v6]
+   → ./ai-chat-helpers.js?v=15 [v15]
+   → ./ai-mood.js?v=2 [v2]
+
+📄 Interact3D/wwwroot/js/module/scene/command/ai-command-executor.js
+   → ./ai-command-handlers.js?v=15 [v15]
+   → ./ai-command-config.js?v=15 [v15]
+
+📄 Interact3D/wwwroot/js/module/scene/command/ai-command-handlers.js
+   → ./ai-command-config.js?v=15 [v15]
+   → ./ai-command-parser.js?v=13 [v13]
+   → ../ai-shared.js?v=21 [v21]
+
+📄 Interact3D/wwwroot/js/module/scene/command/ai-command-parser.js
+   → ./ai-command-config.js?v=15 [v15]
+
+📄 Interact3D/wwwroot/js/module/scene/command/ai-command-planner.js
+   → ./ai-command-config.js?v=15 [v15]
+   → ./ai-command-parser.js?v=13 [v13]
+   → ./ai-command-handlers.js?v=15 [v15]
+   → ../ai-shared.js?v=21 [v21]
+   → ../ai-debug.js?v=12 [v12]
+   → ./ai-command-executor.js?v=12 [v12]
+
+📄 Interact3D/wwwroot/js/module/scene/emotion-controller.js
+   → ./ai/chat/ai-mood.js?v=2 [v2]
+
+📄 Interact3D/wwwroot/js/module/scene/house-manager.js
+   → ./ai/chat/ai-mood.js?v=2 [v2]
+   → ./house-model.js?v=3 [v3]
+
+📄 Interact3D/wwwroot/js/module/scene/interaction-system.js
+   → ./emotion-controller.js?v=34 [v34]
+   → ./ai/chat/ai-mood.js?v=2 [v2]
+
+📄 Interact3D/wwwroot/js/module/scene/paint/paint-gallery.js
+   → ./paint-ui.js?v=6 [v6]
+
+📄 Interact3D/wwwroot/js/module/scene/paint/paint-input.js
+   → ./paint-engine.js?v=10 [v10]
+
+📄 Interact3D/wwwroot/js/module/scene/paint/paint-mode.js
+   → ./paint-ui.js?v=6 [v6]
+   → ./paint-gallery.js?v=5 [v5]
+   → ./paint-tools.js?v=11 [v11]
+   → ./paint-brush.js?v=5 [v5]
+   → ./paint-bind.js?v=6 [v6]
+   → ./paint-input.js?v=6 [v6]
+   → ./paint-keyboard.js?v=4 [v4]
+   → ./paint-sketch.js?v=1 [v1]
+   → ./paint-engine.js?v=10 [v10]
+
+📄 Interact3D/wwwroot/js/module/scene/paint/paint-reactions.js
+   → ../ai/ai-shared.js?v=21 [v21]
+   → ../ai/ai-debug.js?v=12 [v12]
+   → ../ai/chat/ai-mood.js?v=2 [v2]
+
+📄 Interact3D/wwwroot/js/module/scene/paint/paint-tools.js
+   → ./paint-engine.js?v=10 [v10]
+
+📄 Interact3D/wwwroot/js/module/scene/paint/paint-ui.js
+   → ./paint-engine.js?v=10 [v10]
+   → ./paint-reactions.js?v=5 [v5]
+
+📄 Interact3D/wwwroot/js/module/scene/skills/action-director.js
+   → ./magic-skills.js?v=4 [v4]
+
+📄 Interact3D/wwwroot/js/module/scene/slingshot/aim.js
+   → ./config.js?v=15 [v15]
+   → ./model.js
+   → ../pose-utils.js
+
+📄 Interact3D/wwwroot/js/module/scene/slingshot/camera.js
+   → ./config.js
+
+📄 Interact3D/wwwroot/js/module/scene/slingshot/physics.js
+   → ./config.js?v=15 [v15]
+   → ../pose-utils.js
+
+📄 Interact3D/wwwroot/js/module/scene/slingshot/sequences/gentle.js
+   → ../config.js
+
+📄 Interact3D/wwwroot/js/module/scene/slingshot/sequences/normal.js
+   → ../config.js
+
+📄 Interact3D/wwwroot/js/module/scene/slingshot/sequences/savage.js
+   → ../config.js
+
+📄 Interact3D/wwwroot/js/module/scene/slingshot-system.js
+   → ./slingshot/config.js?v=3 [v3]
+   → ./slingshot/ui.js?v=1 [v1]
+   → ./slingshot/model.js?v=1 [v1]
+   → ./slingshot/aim.js?v=3 [v3]
+   → ./slingshot/physics.js?v=9 [v9]
+   → ./slingshot/camera.js?v=1 [v1]
+   → ./slingshot/helpers.js?v=1 [v1]
+   → ./slingshot/sequences/gentle.js?v=2 [v2]
+   → ./slingshot/sequences/normal.js?v=2 [v2]
+   → ./slingshot/sequences/savage.js?v=2 [v2]
+
+📄 Interact3D/wwwroot/js/module/scene/vfx/effects/barrage.js
+   → ../screen-flash.js
+
+📄 Interact3D/wwwroot/js/module/scene/vfx/effects/shield.js
+   → ../screen-flash.js
+
+📄 Interact3D/wwwroot/js/module/scene/vfx-system.js
+   → ./vfx/textures.js
+   → ./vfx/pools.js
+   → ./vfx/screen-flash.js
+   → ./vfx/impact-marker.js
+   → ./vfx/effects-updater.js
+   → ./vfx/effects/shield.js
+   → ./vfx/effects/explosion.js
+   → ./vfx/effects/trail.js
+   → ./vfx/effects/ground.js
+   → ./vfx/effects/magic.js
+   → ./vfx/effects/projectile.js
+   → ./vfx/effects/barrage.js
+   → ./vfx/effects/ritual.js
+   → ./vfx/effects/launch.js
+
+📄 Interact3D/wwwroot/js/pages/home-3d.js
+   → ../module/scene/character-controller.js?v=14 [v14]
+   → ../module/scene/box-system.js?v=41 [v41]
+   → ../module/scene/context-menu.js?v=11 [v11]
+   → ../module/scene/grab-controller.js?v=11 [v11]
+   → ../module/scene/camera-wasd.js?v=1 [v1]
+   → ../module/scene/emotion-controller.js?v=34 [v34]
+   → ../module/scene/ai/ai-command.js?v=15 [v15]
+   → ../module/scene/ai/ai-gemini.js?v=25 [v25]
+   → ../module/scene/spring-bone.js?v=1 [v1]
+   → ../module/scene/pose-utils.js?v=1 [v1]
+   → ../module/scene/ai/ai-shared.js?v=21 [v21]
+   → ../module/scene/trash-can.js?v=1 [v1]
+   → ../module/scene/ai/ai-reaction.js?v=15 [v15]
+   → ../module/scene/interaction-system.js?v=27 [v27]
+   → ../module/scene/ai/reactive-emotes.js?v=3 [v3]
+   → ../module/scene/ai/idle-events.js?v=4 [v4]
+   → ../module/scene/skills/action-director.js?v=9 [v9]
+   → ../module/scene/vfx-system.js?v=39 [v39]
+   → ../module/scene/minigame-rps.js?v=1 [v1]
+   → ../module/scene/slingshot-system.js?v=62 [v62]
+   → ../module/scene/ai/chat/ai-mood.js?v=2 [v2]
+   → ../module/scene/face-controller.js?v=22 [v22]
+   → ../module/scene/paint/paint-mode.js?v=19.1 [v19.1]
+   → ../module/scene/paint/paint-reactions.js?v=5 [v5]
+   → ../module/scene/build/build-mode.js?v=29 [v29]
+   → ../module/scene/house-manager.js?v=3.1 [v3.1]
+
+────────────────────────────────────────────────────────────────────────────────
+⚠️  VERSION MISMATCH
+────────────────────────────────────────────────────────────────────────────────
+❌ Interact3D/wwwroot/js/module/scene/slingshot/aim.js
+   → ./config.js?v=15   (file thực: v6, import: v15)
+
+❌ Interact3D/wwwroot/js/module/scene/slingshot/physics.js
+   → ./config.js?v=15   (file thực: v6, import: v15)
+
+
+────────────────────────────────────────────────────────────────────────────────
+📊 SUMMARY
+────────────────────────────────────────────────────────────────────────────────
+Root:              E:\c#\proj_tn\Interact3D
+JS files:          73
+JS total size:     672.8 KB
+Version mismatch:  2
+
+  .js        73 files
+  .json       3 files
+  .css        3 files
+
+════════════════════════════════════════════════════════════════════════════════
+END
+════════════════════════════════════════════════════════════════════════════════

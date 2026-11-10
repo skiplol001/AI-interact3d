@@ -1,0 +1,29 @@
+﻿# KIẾN THỨC VẼ CƠ BẢN
+
+## 1. Tỷ lệ (Proportion)
+- Đầu người trưởng thành = 1/7 đến 1/8 chiều cao cơ thể
+- Vẽ trẻ em: đầu to hơn (1/4 hoặc 1/5 tỷ lệ)
+- Nhân vật anime thường 1/6 hoặc 1/7 nhưng đầu to hơn người thật 1.5x
+
+## 2. Phối màu cơ bản (Color Theory)
+- 3 màu gốc: Đỏ, Vàng, Xanh dương (RYB)
+- Màu bậc 2: Cam (đỏ+vàng), Xanh lá (vàng+xanh), Tím (đỏ+xanh)
+- Màu bổ trợ (complementary): đối diện trên vòng tròn màu — tạo tương phản mạnh
+- Quy tắc 60-30-10: 60% màu chính, 30% màu phụ, 10% điểm nhấn
+
+## 3. Dụng cụ
+- Bút chì: HB (nét nhạt), 2B-4B (nét đậm), 6B-8B (bóng tối)
+- Giấy: 90-120gsm cho sketch, 200gsm+ cho màu nước
+- Tẩy: tẩy bút chì mềm, tẩy kneaded cho highlight
+
+## 4. Nguyên tắc cơ bản
+- Luôn bắt đầu bằng hình khối đơn giản (sphere, cube, cylinder)
+- Vẽ từ lớn đến nhỏ, từ tổng thể đến chi tiết
+- Đặt 1 nguồn sáng duy nhất để tránh rối
+- Luyện 5-10 phút gesture drawing mỗi ngày
+
+## 5. Lỗi thường gặp
+- Vẽ mắt quá to so với đầu (trừ anime style)
+- Cứng khớp vì không dùng đường cong
+- Bố cục dồn góc — cần chừa khoảng trống (negative space)
+- Đổ bóng đen tuyền — nên chia 3-4 tầng sáng tối

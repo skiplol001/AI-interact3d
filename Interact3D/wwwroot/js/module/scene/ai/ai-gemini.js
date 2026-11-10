@@ -1,9 +1,9 @@
 ﻿// ═══════════════════════════════════════════════════════════════
-// ai-gemini.js — UI v25 (Update Chat Import Version)
+// ai-gemini.js — UI v26 (Multi-Agent Level 4 - Dual API Keys)
 // ═══════════════════════════════════════════════════════════════
 
 import { handleCommand } from './ai-controller.js';
-import { handleChat } from './ai-chat/ai-chat-main.js?v=24'; // ⭐ UPDATE v=24
+import { handleChat } from '../chat/ai-chat-main.js?v=25';
 import { handleImageVision } from './ai-vision-handler.js';
 import { initImageUploader } from './ai-ui-image-uploader.js';
 import { formatMarkdown, getPrefs } from './ai-shared.js?v=21';
@@ -96,16 +96,15 @@ export function initAICommandUI(aiTools) {
     const wrap = document.createElement('div');
     wrap.id = 'ai-command-bar';
 
-    // ⭐ FIX: Container chính dùng flex-col, giới hạn chiều cao
     wrap.style.cssText = `
         position: fixed; bottom: 80px; left: 50%; transform: translateX(-50%);
         width: min(680px, 94vw); background: rgba(15, 23, 42, 0.96);
         border: 1px solid #334155; border-radius: 12px; z-index: 9999;
         backdrop-filter: blur(10px);
         display: flex; flex-direction: column; 
-        max-height: 85vh; /* Giới hạn chiều cao tối đa */
+        max-height: 85vh;
         box-shadow: 0 10px 30px rgba(0,0,0,0.5);
-        overflow: hidden; /* Ẩn phần tràn */
+        overflow: hidden;
     `;
 
     wrap.innerHTML = `
@@ -137,7 +136,10 @@ export function initAICommandUI(aiTools) {
             <div id="ai-key-panel" style="display: none; flex-shrink: 0; padding: 12px; background: rgba(30, 41, 59, 0.95); border-bottom: 1px solid #334155;">
                 <form id="ai-key-form" onsubmit="event.preventDefault();">
                     <div style="display: flex; gap: 8px; margin-bottom: 8px;">
-                        <input id="ai-key-input" type="password" placeholder="Dán Groq API Key..." autocomplete="off" style="flex: 1; padding: 8px; background: #0f172a; border: 1px solid #475569; border-radius: 6px; color: #fff; outline: none;" />
+                        <input id="ai-key-input" type="password" placeholder="Dán Groq API Key (DeepSeek)..." autocomplete="off" style="flex: 1; padding: 8px; background: #0f172a; border: 1px solid #475569; border-radius: 6px; color: #fff; outline: none;" />
+                    </div>
+                    <div style="display: flex; gap: 8px; margin-bottom: 8px;">
+                        <input id="ai-gemini-key-input" type="password" placeholder="Dán Gemini API Key (Họa sĩ)..." autocomplete="off" style="flex: 1; padding: 8px; background: #0f172a; border: 1px solid #475569; border-radius: 6px; color: #fff; outline: none;" />
                         <button id="ai-key-save" type="submit" style="padding: 8px 16px; background: #10b981; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600;">Lưu</button>
                     </div>
                 </form>
@@ -170,6 +172,7 @@ export function initAICommandUI(aiTools) {
     const statusEl = wrap.querySelector('#ai-status');
     const keyPanel = wrap.querySelector('#ai-key-panel');
     const keyInput = wrap.querySelector('#ai-key-input');
+    const geminiKeyInput = wrap.querySelector('#ai-gemini-key-input');
     const historyCounter = wrap.querySelector('#ai-history-counter');
     const clearHistoryBtn = wrap.querySelector('#ai-clear-history');
     const modeSelect = wrap.querySelector('#ai-chat-mode-select');
@@ -382,17 +385,23 @@ export function initAICommandUI(aiTools) {
     debugBtn.onmousedown = () => { debugPressTimer = setTimeout(() => { if (confirm('Reset stats?')) { resetStats(); setStatus('🔄 Reset!'); } }, 800); };
     debugBtn.onmouseup = () => clearTimeout(debugPressTimer);
 
+    // ⭐ CẬP NHẬT: Xử lý lưu 2 Key
     wrap.querySelector('#ai-toggle-key').onclick = () => {
         keyPanel.style.display = keyPanel.style.display === 'none' ? 'block' : 'none';
-        if (keyPanel.style.display === 'block') { keyInput.value = localStorage.getItem('groq_api_key') || ''; keyInput.focus(); }
+        if (keyPanel.style.display === 'block') {
+            keyInput.value = localStorage.getItem('groq_api_key') || '';
+            geminiKeyInput.value = localStorage.getItem('gemini_api_key') || '';
+            keyInput.focus();
+        }
     };
     wrap.querySelector('#ai-key-save').onclick = (e) => {
         e.preventDefault();
-        const key = keyInput.value.trim();
-        if (!key) return;
-        localStorage.setItem('groq_api_key', key);
+        const groqKey = keyInput.value.trim();
+        const geminiKey = geminiKeyInput.value.trim();
+        if (groqKey) localStorage.setItem('groq_api_key', groqKey);
+        if (geminiKey) localStorage.setItem('gemini_api_key', geminiKey);
         keyPanel.style.display = 'none';
-        setStatus('✅ Đã lưu Key Groq');
+        setStatus('✅ Đã lưu API Keys (Groq + Gemini)');
         setTimeout(() => setStatus(''), 2000);
     };
 

@@ -4,8 +4,7 @@
 
 import { COLOR_VI, COLORS, BOX_SIZE_FALLBACK, MAX_SPAWN } from './ai-command-config.js?v=15';
 import { r2, colorInfo, findIds, vn, levenshtein } from './ai-command-parser.js?v=13';
-import { summarizeSceneAround } from '../ai-shared.js?v=21';
-
+import { summarizeSceneAround } from '../ai/ai-shared.js?v=21';
 // ⭐ helper lấy mode hiện tại
 function getCurrentMode() {
     try {

@@ -8,8 +8,8 @@ import {
     getBsys, getCtrl, allBoxes, carriedBox, findBoxById,
     normBoxId, getSavedPositions, getAvailableModels
 } from './ai-command-handlers.js?v=15';
-import { MODEL_CHAIN, askGroq, parseGroqResponse, sanitizeStringField, sanitizeSceneContext } from '../ai-shared.js?v=21';
-import { logEmptyResponse } from '../ai-debug.js?v=12';
+import { MODEL_CHAIN, askGroq, parseGroqResponse, sanitizeStringField, sanitizeSceneContext } from '../ai/ai-shared.js?v=21';
+import { logEmptyResponse } from '../ai/ai-debug.js?v=12';
 import { memory } from './ai-command-executor.js?v=12';
 
 // ═══════════════════════════════════════════════════════════════

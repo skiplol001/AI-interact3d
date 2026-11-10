@@ -3,7 +3,7 @@
 // Tự động chọn 12 khuôn mặt dựa trên Mode + Mood + Ngữ cảnh
 // ═══════════════════════════════════════════════════════════════
 import * as THREE from 'https://esm.sh/three@0.160.0';
-import { getMood } from './ai-chat/ai-mood.js?v=2';
+import { getMood } from './chat/ai-mood.js?v=2';
 
 const BUSY_STATES = [
     'walking', 'running', 'carryWalk', 'carryRun', 'walkToBox',

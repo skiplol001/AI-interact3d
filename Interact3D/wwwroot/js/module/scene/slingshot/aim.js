@@ -1,10 +1,13 @@
 // ═══════════════════════════════════════════════════════════════
-// slingshot/aim.js — Aim mode, trajectory, pointer handlers
-// FIX: thêm setTool(); bật ghost khi chuột di chuyển lúc đang 'placing'
+// slingshot/aim.js — v2 (Performance Optimized)
 // ═══════════════════════════════════════════════════════════════
 import * as THREE from 'https://esm.sh/three@0.160.0';
-import { PHYSICS_STEP, TRAJ_STEPS, PHASE_DURATIONS, ACCEL_RATE, FLIGHT_SPEED_MULT, INITIAL_SPEED_FACTOR, GROUND_Y, HIT_RADIUS } from './config.js';
+import { PHYSICS_STEP, TRAJ_STEPS, PHASE_DURATIONS, ACCEL_RATE, FLIGHT_SPEED_MULT, INITIAL_SPEED_FACTOR, GROUND_Y, HIT_RADIUS } from './config.js?v=6';
 import { createSlingshot } from './model.js';
+import { getPoseBox } from '../pose-utils.js';
+
+const _tmpBox = new THREE.Box3();
+const _tmpSize = new THREE.Vector3();
 
 export const aimMixin = {
     // ═══════════════════════════════════════════════════════════
@@ -16,7 +19,7 @@ export const aimMixin = {
         if (toolId === 'place_slingshot') {
             if (this.isAiming) this.exitAimMode();
             this.state = 'placing';
-            this._isPlacementValid = false; // chờ pointermove validate xong mới cho đặt
+            this._isPlacementValid = false;
         } else {
             if (this.state === 'placing') this.state = this.slingshot ? 'ready' : 'idle';
             if (this.ghost) this.ghost.visible = false;
@@ -29,49 +32,62 @@ export const aimMixin = {
         this.mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
     },
 
+    // ⭐ THROTTLE: Chỉ tính toán tối đa 60 lần/giây
     _updateAimVisuals() {
-        if (!this.slingshot || !this.rock || this.isFlying || this.isBouncing || this._isProcessingShot) return;
+        if (this._aimUpdatePending) return;
+        this._aimUpdatePending = true;
 
-        this.rock.position.copy(this.rockStartPos);
-        this.rock.position.z -= this._aimPull * Math.cos(this._aimPitch);
-        this.rock.position.y += this._aimPull * Math.sin(this._aimPitch);
-        this._updateRubberBands();
+        requestAnimationFrame(() => {
+            this._aimUpdatePending = false;
+            if (!this.slingshot || !this.rock || this.isFlying || this.isBouncing || this._isProcessingShot) return;
 
-        const pullPercent = this._aimPull / this._maxPull;
-        this.powerFillEl.style.width = `${pullPercent * 100}%`;
-        this.powerValEl.textContent = `${Math.round(pullPercent * 100)}%`;
-        this.pitchValEl.textContent = `${Math.round(this._aimPitch * (180 / Math.PI))}°`;
+            this.rock.position.copy(this.rockStartPos);
+            this.rock.position.z -= this._aimPull * Math.cos(this._aimPitch);
+            this.rock.position.y += this._aimPull * Math.sin(this._aimPitch);
+            this._updateRubberBands();
 
-        if (this._aimPull > 0.05) {
-            this.slingshot.updateMatrixWorld(true);
-            const initialSpeed = this._aimPull * FLIGHT_SPEED_MULT * INITIAL_SPEED_FACTOR;
-            const localPullVec = new THREE.Vector3(0, Math.sin(this._aimPitch), Math.cos(this._aimPitch)).multiplyScalar(initialSpeed);
-            const worldVel = localPullVec.applyQuaternion(this.slingshot.quaternion);
-            const startWorldPos = this.slingshot.localToWorld(this.rock.position.clone());
-            const targetSpeed = this._aimPull * FLIGHT_SPEED_MULT;
-            this._updateTrajectory(startWorldPos, worldVel, targetSpeed, pullPercent);
-        } else {
-            this.trajectoryLine.visible = false;
-            if (window.vfxSystem) window.vfxSystem.hideImpactMarker();
-        }
+            const pullPercent = this._aimPull / this._maxPull;
+            if (this.powerFillEl) this.powerFillEl.style.width = `${pullPercent * 100}%`;
+            if (this.powerValEl) this.powerValEl.textContent = `${Math.round(pullPercent * 100)}%`;
+            if (this.pitchValEl) this.pitchValEl.textContent = `${Math.round(this._aimPitch * (180 / Math.PI))}°`;
+
+            if (this._aimPull > 0.05) {
+                this.slingshot.updateMatrixWorld(true);
+                const initialSpeed = this._aimPull * FLIGHT_SPEED_MULT * INITIAL_SPEED_FACTOR;
+                const localPullVec = new THREE.Vector3(0, Math.sin(this._aimPitch), Math.cos(this._aimPitch)).multiplyScalar(initialSpeed);
+                const worldVel = localPullVec.applyQuaternion(this.slingshot.quaternion);
+                const startWorldPos = this.slingshot.localToWorld(this.rock.position.clone());
+                const targetSpeed = this._aimPull * FLIGHT_SPEED_MULT;
+
+                this._updateTrajectory(startWorldPos, worldVel, targetSpeed, pullPercent);
+            } else {
+                this.trajectoryLine.visible = false;
+                if (window.vfxSystem) window.vfxSystem.hideImpactMarker();
+            }
+        });
     },
 
     _updateTrajectory(startPos, initialVel, targetSpeed, pullPercent) {
         this.trajectoryLine.visible = true;
         const positions = this.trajectoryLine.geometry.attributes.position.array;
         const g = this.rockGravity;
-        const dt = PHYSICS_STEP;
+        const dt = PHYSICS_STEP; // Đã tăng lên 0.03 trong config
 
         const pos = startPos.clone();
         const vel = initialVel.clone();
         const prev = new THREE.Vector3();
-        const hit = new THREE.Vector3();
         let flightTime = 0;
         let phase = 0;
         let ended = false;
         let impactPos = null;
         let impactType = null;
         const includeChar = !this._shieldTriggered;
+
+        // ⭐ Lấy dữ liệu ra ngoài vòng lặp để tối ưu
+        const boxes = this.boxSystem ? this.boxSystem.boxes : [];
+        const houseBox = (window.houseManager?.hasHouse) ? window.houseManager.getHouse().bounds : null;
+        const charBox = includeChar ? getPoseBox(this.ctrl.root) : null;
+        if (charBox) charBox.expandByScalar(0.25);
 
         for (let i = 0; i < TRAJ_STEPS; i++) {
             positions[i * 3] = pos.x;
@@ -100,13 +116,38 @@ export const aimMixin = {
                 pos.y = GROUND_Y;
                 ended = true; impactPos = pos.clone(); impactType = 'ground';
             } else {
-                const t = this._findObstacleHit(prev, pos, hit, includeChar);
-                if (t) { pos.copy(hit); ended = true; impactPos = hit.clone(); impactType = t; }
+                // ⭐ TỐI ƯU VA CHẠM: Dùng Box3.containsPoint thay vì Raycaster
+                let hitSomething = false;
+
+                // 1. House
+                if (houseBox && houseBox.containsPoint(pos)) {
+                    ended = true; impactPos = pos.clone(); impactType = 'house'; hitSomething = true;
+                }
+
+                // 2. Boxes
+                if (!hitSomething) {
+                    for (let j = 0; j < boxes.length; j++) {
+                        const b = boxes[j];
+                        if (b.userData.carried) continue;
+                        const e = this.boxSystem.getExtents(b);
+                        _tmpSize.set(e.w + 0.24, e.h + 0.24, e.d + 0.24);
+                        _tmpBox.setFromCenterAndSize(b.position, _tmpSize);
+                        if (_tmpBox.containsPoint(pos)) {
+                            ended = true; impactPos = pos.clone(); impactType = 'box'; hitSomething = true; break;
+                        }
+                    }
+                }
+
+                // 3. Character
+                if (!hitSomething && charBox && charBox.containsPoint(pos)) {
+                    ended = true; impactPos = pos.clone(); impactType = 'char';
+                }
             }
         }
 
         this.trajectoryLine.geometry.attributes.position.needsUpdate = true;
-        this.trajectoryLine.computeLineDistances();
+        // Không cần computeLineDistances mỗi frame để đỡ tốn CPU
+        // this.trajectoryLine.computeLineDistances();
 
         let lineColor = new THREE.Color(0x00ffff);
         if (pullPercent > 0.5) lineColor.lerp(new THREE.Color(0xa78bfa), (pullPercent - 0.5) * 2);
@@ -191,7 +232,7 @@ export const aimMixin = {
             this.raycaster.setFromCamera(this.mouse, this.camera);
             const pt = new THREE.Vector3();
             if (this.raycaster.ray.intersectPlane(this.floorPlane, pt)) {
-                this.ghost.visible = true; // FIX: chỉ hiện ghost khi chuột đã có vị trí
+                this.ghost.visible = true;
                 this.ghost.position.set(pt.x, 0, pt.z);
                 this._validatePlacement(pt);
             }

@@ -1,6 +1,7 @@
 //═══════════════════════════════════════════════════════════════
-// vfx-system.js — v37 (Modular Orchestrator)
-// FIX: thêm launchMixin (createLaunchBurst, createSonicBoom) bị mất khi tách module
+// vfx-system.js — v38 (Modular Orchestrator + Light Guard)
+// FIX: thêm _guardLights() — chống PointLight bị kẹt/cộng dồn làm cả cảnh ngả vàng, cháy sáng
+//      (khi không còn hiệu ứng nào thì ép tắt hết đèn của pool; kẹp cường độ/khoảng chiếu)
 // ═══════════════════════════════════════════════════════════════
 import * as THREE from 'https://esm.sh/three@0.160.0';
 
@@ -54,7 +55,7 @@ import { barrageMixin } from './vfx/effects/barrage.js';
 import { ritualMixin } from './vfx/effects/ritual.js';
 import { launchMixin } from './vfx/effects/launch.js';
 
-console.log('[VFX] v37 module loading (modular)...');
+console.log('[VFX] v38 module loading (modular)...');
 
 // ═══════════════════════════════════════════════════════════════
 // MESH EFFECT TYPES — cần biết để dispose đúng cách
@@ -64,12 +65,22 @@ const MESH_EFFECT_TYPES = new Set([
     'sonicRing', 'groundRing', 'magicGate'
 ]);
 
+// ═══════════════════════════════════════════════════════════════
+// LIGHT GUARD — giới hạn đèn của pool
+// Scene nền đã rất sáng (ambient 1.5 + hemi 1.0 + dir 2.0 + ACES, exposure 1.35)
+// nên chỉ cần vài PointLight dư là sàn/nhân vật/hộp bão hoà thành một màu.
+// ═══════════════════════════════════════════════════════════════
+const MAX_LIGHT_INTENSITY = 4.0;   // kẹp cường độ tối đa của mỗi đèn pool
+const MAX_LIGHT_DISTANCE = 12;     // distance = 0 nghĩa là chiếu vô hạn → ép về giá trị này
+const LIGHT_IDLE_GRACE = 0.6;      // giây không còn hiệu ứng nào thì ép tắt toàn bộ đèn
+
 export class VFXSystem {
     constructor(scene, camera) {
         this.scene = scene;
         this.camera = camera;
         this.activeEffects = [];
         this._launchFX = [];
+        this._lightIdleTime = 0;
 
         // ═══ TEXTURES ═══
         this.particleTexture = generateParticleTexture();
@@ -103,7 +114,7 @@ export class VFXSystem {
         this._slowMo = 1.0;
         this._slowMoTimer = null;
 
-        console.log('[VFX] System ready (v37 — Modular)');
+        console.log('[VFX] System ready (v38 — Modular + Light Guard)');
     }
 
     // ═══════════════════════════════════════════════════════════
@@ -126,11 +137,61 @@ export class VFXSystem {
     }
 
     // ═══════════════════════════════════════════════════════════
+    // LIGHT GUARD
+    // ═══════════════════════════════════════════════════════════
+    _guardLights(dt) {
+        if (!this.lightPool) return;
+
+        const idle = this.activeEffects.length === 0 && this._launchFX.length === 0;
+        this._lightIdleTime = idle ? this._lightIdleTime + dt : 0;
+        const forceOff = this._lightIdleTime > LIGHT_IDLE_GRACE;
+
+        for (const p of this.lightPool) {
+            const l = p.light;
+            if (!l) continue;
+
+            // Đèn không thuộc hiệu ứng nào, hoặc không còn hiệu ứng nào chạy → phải tắt
+            if (forceOff || !p.active) {
+                if (l.intensity !== 0) l.intensity = 0;
+                if (forceOff && p.active) p.active = false; // trả lại pool nếu bị kẹt
+                continue;
+            }
+
+            if (l.intensity > MAX_LIGHT_INTENSITY) l.intensity = MAX_LIGHT_INTENSITY;
+            if (!l.distance || l.distance > MAX_LIGHT_DISTANCE) l.distance = MAX_LIGHT_DISTANCE;
+        }
+    }
+
+    // Dùng để gỡ rối: vfxSystem.forceClearLights() trong Console
+    forceClearLights() {
+        for (const p of this.lightPool || []) {
+            if (p.light) p.light.intensity = 0;
+            p.active = false;
+        }
+        for (const e of this.activeEffects) if (e.lightObj) e.lightObj.active = false;
+    }
+
+    // Dùng để gỡ rối: vfxSystem.debugLights() trong Console
+    debugLights() {
+        const rows = (this.lightPool || []).map((p, i) => ({
+            i,
+            active: !!p.active,
+            intensity: +(p.light?.intensity ?? 0).toFixed(2),
+            distance: p.light?.distance,
+            color: p.light ? '#' + p.light.color.getHexString() : '-',
+        }));
+        console.table(rows);
+        console.log('[VFX] activeEffects:', this.activeEffects.length, '· launchFX:', this._launchFX.length);
+        return rows;
+    }
+
+    // ═══════════════════════════════════════════════════════════
     // UPDATE — delegate sang effects-updater
     // ═══════════════════════════════════════════════════════════
     update(dt) {
         updateEffects(this, dt);
         this._updateLaunchFX(dt);
+        this._guardLights(dt);
     }
 
     // ═══════════════════════════════════════════════════════════
@@ -180,7 +241,7 @@ export class VFXSystem {
         this.ghostPool.forEach(p => { p.mesh.geometry.dispose(); p.mat.dispose(); this.scene.remove(p.mesh); });
         this.windTearPool.forEach(p => { p.mesh.geometry.dispose(); p.mat.dispose(); this.scene.remove(p.mesh); });
         this.dustPool.forEach(p => { p.geo.dispose(); p.mat.dispose(); this.scene.remove(p.mesh); });
-        this.lightPool.forEach(p => { this.scene.remove(p.light); });
+        this.lightPool.forEach(p => { p.light.intensity = 0; this.scene.remove(p.light); });
         this.sparkPool.forEach(p => { p.mat.dispose(); this.scene.remove(p.mesh); });
         this.fragmentPool.forEach(p => { p.mat.dispose(); this.scene.remove(p.mesh); });
         this.flashPool.forEach(p => { p.mat.dispose(); this.scene.remove(p.mesh); });
@@ -214,4 +275,4 @@ Object.assign(VFXSystem.prototype,
     launchMixin,      // createLaunchBurst, createSonicBoom (Slingshot)
 );
 
-console.log('[VFX] v37 module LOADED — modular VFX ready');
+console.log('[VFX] v38 module LOADED — modular VFX ready');

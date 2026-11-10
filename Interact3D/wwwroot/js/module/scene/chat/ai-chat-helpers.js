@@ -2,7 +2,7 @@
 // ai-chat-helpers.js — v15 (Anti-injection v3: Homoglyph Map)
 // ═══════════════════════════════════════════════════════════════
 
-import { normalizeVN } from '../ai-shared.js?v=21';
+import { normalizeVN } from '../ai/ai-shared.js?v=21';
 import { normalizeEmotion } from '../emotion-controller.js?v=34';
 import { getMood } from './ai-mood.js?v=2';
 

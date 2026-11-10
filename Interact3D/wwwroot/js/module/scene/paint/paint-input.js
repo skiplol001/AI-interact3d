@@ -1,14 +1,16 @@
 ﻿// ═══════════════════════════════════════════════════════════════
-// paint-input.js — v3 (Pointer events + robust rotate handle)
+// paint-input.js — v6 (Pointer events · coalesced · fill mọi layer · Line tọa độ lẻ · 1 pointer/nét)
 // ═══════════════════════════════════════════════════════════════
 import {
-    drawBrushDot, drawShape, drawQuadBezier, drawSmoothPath,
-    floodFill, pickColor, applySymmetryToStroke,
-} from './paint-engine.js?v=6';
+    drawShape, drawQuadBezier,
+    computeFillMask, applyFillMask, pickColor, applySymmetryToStroke,
+} from './paint-engine.js?v=10';
+
+// Đường thẳng giữ tọa độ lẻ (nét mảnh mềm, không nhòe 2px); hình khối làm tròn để cạnh sắc
+const snapCoord = (v, shape) => (shape === 'line' ? v : Math.round(v));
 
 export const inputMixin = {
 
-    // ⭐ Hit test rotate handle — dùng canvas-space radius
     _isPointOnRotateHandle(pt) {
         if (!this._rotateHandlePos) return false;
         const dx = pt.x - this._rotateHandlePos.x;
@@ -20,9 +22,16 @@ export const inputMixin = {
     _onPointerDown(e) {
         if (!this.isOpen) return;
         if (e.button !== 0) return;
+
+        // ⭐ Đang có nét: con trỏ khác (ngón tay thứ 2, lòng bàn tay...) bị bỏ qua.
+        // Cùng con trỏ mà nét còn dang dở (mất pointerup) → chốt nét cũ rồi vẽ tiếp.
+        if (this._isDrawing && this._currentStroke) {
+            if (e.pointerId === this._strokePointerId) this._finishStroke();
+            else return;
+        }
+
         this._pendingPointerQueue = [];
 
-        // ─── Pan ───
         if (this.tool === 'pan') {
             this._isPanning = true;
             this._panStart = { x: e.clientX - this.panX, y: e.clientY - this.panY };
@@ -31,22 +40,31 @@ export const inputMixin = {
             return;
         }
 
+        const activeLayer = this._getActiveLayer();
+        if (!activeLayer) return;
+
         const pt = this._getCanvasPoint(e);
         if (pt.x < 0 || pt.x > this.CANVAS_W || pt.y < 0 || pt.y > this.CANVAS_H) return;
 
-        // ⭐ Float shape priority: rotate handle > Alt-rotate > move > commit
+        if (this.tool !== 'eyedropper' && !this._floatingShape) {
+            if (activeLayer.locked) {
+                this._setStatus('⚠️ Layer đang bị khóa!');
+                return;
+            }
+            if (!activeLayer.visible) {
+                this._setStatus('⚠️ Layer đang ẩn!');
+                return;
+            }
+        }
+
+        // ─── Đang có hình nổi (floating) ───
         if (this._floatingShape && this._movingPixels && this._selection) {
             const cx = this._selection.x + this._selection.w / 2;
             const cy = this._selection.y + this._selection.h / 2;
 
-            // Ưu tiên 1: click trực tiếp vào rotate handle
             if (this._isPointOnRotateHandle(pt)) {
                 const startAngle = Math.atan2(pt.y - cy, pt.x - cx);
-                this._rotateStart = {
-                    startAngle,
-                    startRot: this._floatRotation || 0,
-                    cx, cy,
-                };
+                this._rotateStart = { startAngle, startRot: this._floatRotation || 0, cx, cy };
                 this._isRotating = true;
                 this.canvasWrap.style.cursor = 'grabbing';
                 this._setStatus('🔄 Đang xoay — thả chuột để dừng');
@@ -55,51 +73,42 @@ export const inputMixin = {
 
             const inSel = this._isPointInSelection(pt);
 
-            // Ưu tiên 2: Alt+kéo trong vùng = xoay (fallback nhanh)
             if (e.altKey && inSel) {
                 const startAngle = Math.atan2(pt.y - cy, pt.x - cx);
-                this._rotateStart = {
-                    startAngle,
-                    startRot: this._floatRotation || 0,
-                    cx, cy,
-                };
+                this._rotateStart = { startAngle, startRot: this._floatRotation || 0, cx, cy };
                 this._isRotating = true;
                 this.canvasWrap.style.cursor = 'grabbing';
                 this._setStatus('🔄 Đang xoay — thả chuột để dừng');
                 return;
             }
 
-            // Ưu tiên 3: kéo trong vùng = move
             if (inSel) {
                 this._moveStart = {
                     mx: pt.x, my: pt.y,
-                    selX: this._selection.x,
-                    selY: this._selection.y,
+                    selX: this._selection.x, selY: this._selection.y,
                 };
                 this.canvasWrap.style.cursor = 'move';
                 this._setStatus('Kéo để di chuyển — Kéo ⚪ để xoay — Space/Enter để đặt');
                 return;
             }
 
-            // Ưu tiên 4: click ngoài vùng = commit
             this._commitSelection();
             this.canvasWrap.style.cursor = 'crosshair';
             return;
         }
 
-        // ─── Select tool ───
+        // ─── Select ───
         if (this.tool === 'select') {
             if (this._selection && this._isPointInSelection(pt)) {
                 if (!this._isMovingSelection) {
-                    this._movingPixels = this._extractSelectionPixels();
+                    const px = this._extractSelectionPixels();
+                    if (!px) return;
+                    this._movingPixels = px;
                     this._isMovingSelection = true;
-                    this._pixelCache = null;
-                    this._pixelCanvas = null;
                 }
                 this._moveStart = {
                     mx: pt.x, my: pt.y,
-                    selX: this._selection.x,
-                    selY: this._selection.y,
+                    selX: this._selection.x, selY: this._selection.y,
                 };
                 this.canvasWrap.style.cursor = 'move';
                 this._setStatus('Đang di chuyển — Space/Enter để đặt');
@@ -111,18 +120,23 @@ export const inputMixin = {
             return;
         }
 
-        // ─── Fill ───
+        // ─── Fill (tham chiếu mọi layer → tô được dưới nét line art) ───
         if (this.tool === 'fill') {
-            if (floodFill(this.ctx, pt.x, pt.y, this.color, this.CANVAS_W, this.CANVAS_H)) {
-                this._strokes.push([{ type: 'fill', x: pt.x, y: pt.y, color: this.color }]);
-                this._redoStack = [];
-                this._dirty = true;
-                this._setStatus(`${this._strokes.length} thao tác`);
-            }
+            const src = this.fillAll ? this.ctx : activeLayer.ctx;
+            const res = computeFillMask(src, pt.x, pt.y, this.CANVAS_W, this.CANVAS_H, this.fillTol, this.fillAll ? 1 : 0);
+            if (!res) return;
+            // res đã gồm viền mềm 1px → patch undo bao trọn vùng bị đổi
+            const rect = this._clampRect({ x: res.x, y: res.y, w: res.w, h: res.h });
+            if (!rect) return;
+            const before = this._cropCanvas(activeLayer.canvas, rect.x, rect.y, rect.w, rect.h);
+            applyFillMask(activeLayer.ctx, res, this.color);
+            const after = this._cropCanvas(activeLayer.canvas, rect.x, rect.y, rect.w, rect.h);
+            this._pushPatch(activeLayer, rect, before, after);
+            this._renderComposite();
             return;
         }
 
-        // ─── Eyedropper ───
+        // ─── Eyedropper (lấy màu từ ảnh ghép) ───
         if (this.tool === 'eyedropper') {
             this.color = pickColor(this.ctx, pt.x, pt.y);
             this.overlay.querySelector('#paint-color-input').value = this.color;
@@ -145,47 +159,36 @@ export const inputMixin = {
                 }
                 return;
             }
-            this._shapeStart = { x: Math.round(pt.x), y: Math.round(pt.y) };
+            this._shapeStart = { x: snapCoord(pt.x, this.shape), y: snapCoord(pt.y, this.shape) };
             this._isDrawing = true;
             return;
         }
 
         // ─── Brush / Eraser ───
-        this.overlayCtx.clearRect(0, 0, this.CANVAS_W, this.CANVAS_H);
-        const isEraser = this.tool === 'eraser';
-        const baseSize = this._getEffectiveSize();
-
-        this._lastRawPoint = { x: pt.x, y: pt.y };
-        this._stabilizedPoint = { x: pt.x, y: pt.y };
-        this._lastPointTime = performance.now();
-        this._lastPointerPos = { x: pt.x, y: pt.y, width: baseSize };
-
-        this._currentStroke = {
-            type: isEraser ? 'eraser' : 'brush',
-            brush: isEraser ? 'round' : this.brush,
-            color: isEraser ? '#000000' : this.color,
-            size: baseSize,
-            opacity: isEraser ? 1 : this.opacity,
-            points: [{ x: pt.x, y: pt.y, width: baseSize }],
-        };
-        this._isDrawing = true;
-
-        const targetCtx = isEraser ? this.ctx : this.overlayCtx;
-        const mir = applySymmetryToStroke(this._currentStroke, this.symmetry, this.CANVAS_W, this.CANVAS_H);
-        for (const m of mir) drawBrushDot(targetCtx, m.points[0], m);
+        this._strokePointerId = e.pointerId;
+        this._beginStroke(pt, e);
     },
 
     _onPointerMove(e) {
         if (!this.isOpen) return;
 
-        const rect = this.canvasWrap.getBoundingClientRect();
+        // ⭐ Đang vẽ nét: bỏ qua con trỏ khác
+        if (this._currentStroke && this._strokePointerId != null
+            && e.pointerId !== this._strokePointerId) return;
+
+        // ⭐ Cache rect (getBoundingClientRect đắt khi gọi ở mỗi sự kiện)
+        const now = performance.now();
+        if (!this._wrapRect || now - (this._wrapRectT || 0) > 300) {
+            this._wrapRect = this.canvasWrap.getBoundingClientRect();
+            this._wrapRectT = now;
+        }
+        const rect = this._wrapRect;
         const inside = e.clientX >= rect.left && e.clientX <= rect.right
             && e.clientY >= rect.top && e.clientY <= rect.bottom;
 
         if (!inside) {
             if (this.brushCursor) this.brushCursor.style.display = 'none';
 
-            // Vẫn cập nhật rotate khi kéo ra ngoài
             if (this._isRotating && this._rotateStart) {
                 const pt = this._getCanvasPoint(e);
                 const { cx, cy, startAngle, startRot } = this._rotateStart;
@@ -193,17 +196,10 @@ export const inputMixin = {
                 this._floatRotation = startRot + (angle - startAngle);
                 return;
             }
-            // Vẫn cập nhật move khi kéo ra ngoài
             if (this._isMovingSelection && this._moveStart && this._movingPixels) {
-                const pt = this._getCanvasPoint(e);
-                const nX = this._moveStart.selX + (pt.x - this._moveStart.mx);
-                const nY = this._moveStart.selY + (pt.y - this._moveStart.my);
-                const minVis = 10;
-                this._selection.x = Math.max(-this._selection.w + minVis, Math.min(this.CANVAS_W - minVis, nX));
-                this._selection.y = Math.max(-this._selection.h + minVis, Math.min(this.CANVAS_H - minVis, nY));
+                this._moveSelectionTo(e);
                 return;
             }
-            // Pan
             if (this._isPanning) {
                 this.panX = e.clientX - this._panStart.x;
                 this.panY = e.clientY - this._panStart.y;
@@ -212,9 +208,19 @@ export const inputMixin = {
             return;
         }
 
-        this._pendingPointerQueue.push(e);
+        // Gom các điểm "coalesced" → nét mượt hơn khi di chuột/bút nhanh
+        if (this._isDrawing && this._currentStroke && (this.tool === 'brush' || this.tool === 'eraser')
+            && typeof e.getCoalescedEvents === 'function') {
+            const evs = e.getCoalescedEvents();
+            if (evs && evs.length > 1) {
+                for (const ce of evs) this._pendingPointerQueue.push(ce);
+            } else {
+                this._pendingPointerQueue.push(e);
+            }
+        } else {
+            this._pendingPointerQueue.push(e);
+        }
 
-        // ─── Pan ───
         if (this._isPanning) {
             this.panX = e.clientX - this._panStart.x;
             this.panY = e.clientY - this._panStart.y;
@@ -222,7 +228,6 @@ export const inputMixin = {
             return;
         }
 
-        // Rotate (ưu tiên cao nhất khi đang active)
         if (this._isRotating && this._rotateStart) {
             const pt = this._getCanvasPoint(e);
             const { cx, cy, startAngle, startRot } = this._rotateStart;
@@ -231,42 +236,28 @@ export const inputMixin = {
             return;
         }
 
-        // Float move
         if (this._isMovingSelection && this._moveStart && this._movingPixels) {
-            const pt = this._getCanvasPoint(e);
-            const nX = this._moveStart.selX + (pt.x - this._moveStart.mx);
-            const nY = this._moveStart.selY + (pt.y - this._moveStart.my);
-            const minVis = 10;
-            this._selection.x = Math.max(-this._selection.w + minVis, Math.min(this.CANVAS_W - minVis, nX));
-            this._selection.y = Math.max(-this._selection.h + minVis, Math.min(this.CANVAS_H - minVis, nY));
+            this._moveSelectionTo(e);
             return;
         }
 
-        // Select marquee
         if (this.tool === 'select') {
             if (this._selectDrag) {
                 const pt = this._getCanvasPoint(e);
                 this._selection = this._normalizeRect(
-                    this._selectDrag.startX, this._selectDrag.startY,
-                    pt.x, pt.y
+                    this._selectDrag.startX, this._selectDrag.startY, pt.x, pt.y
                 );
             }
             return;
         }
 
-        // Smart cursor hover cho float state
         if (this._floatingShape && this._selection && !this._isMovingSelection && !this._isRotating) {
             const pt = this._getCanvasPoint(e);
-            if (this._isPointOnRotateHandle(pt)) {
-                this.canvasWrap.style.cursor = 'grab';
-            } else if (this._isPointInSelection(pt)) {
-                this.canvasWrap.style.cursor = 'move';
-            } else {
-                this.canvasWrap.style.cursor = 'crosshair';
-            }
+            if (this._isPointOnRotateHandle(pt)) this.canvasWrap.style.cursor = 'grab';
+            else if (this._isPointInSelection(pt)) this.canvasWrap.style.cursor = 'move';
+            else this.canvasWrap.style.cursor = 'crosshair';
         }
 
-        // Shape preview
         if (this.tool === 'shape') {
             if (this.shape === 'curve' && this._curveState) {
                 const pt = this._getCanvasPoint(e);
@@ -312,7 +303,7 @@ export const inputMixin = {
                 const preview = {
                     type: 'shape', shape: this.shape,
                     x1: this._shapeStart.x, y1: this._shapeStart.y,
-                    x2: Math.round(pt.x), y2: Math.round(pt.y),
+                    x2: snapCoord(pt.x, this.shape), y2: snapCoord(pt.y, this.shape),
                     color: this.color, size: this.size,
                     opacity: this.opacity, fill: false,
                 };
@@ -322,8 +313,20 @@ export const inputMixin = {
         }
     },
 
+    _moveSelectionTo(e) {
+        const pt = this._getCanvasPoint(e);
+        const nX = this._moveStart.selX + (pt.x - this._moveStart.mx);
+        const nY = this._moveStart.selY + (pt.y - this._moveStart.my);
+        const minVis = 10;
+        this._selection.x = Math.max(-this._selection.w + minVis, Math.min(this.CANVAS_W - minVis, nX));
+        this._selection.y = Math.max(-this._selection.h + minVis, Math.min(this.CANVAS_H - minVis, nY));
+    },
+
     _onPointerUp(e) {
-        // Rotate end
+        // ⭐ Con trỏ khác nhả ra khi đang vẽ nét → không được kết thúc nét
+        if (this._currentStroke && this._strokePointerId != null
+            && e.pointerId !== this._strokePointerId) return;
+
         if (this._isRotating) {
             this._isRotating = false;
             this._rotateStart = null;
@@ -332,7 +335,6 @@ export const inputMixin = {
             return;
         }
 
-        // Float move end
         if (this._isMovingSelection && this._moveStart && this._movingPixels) {
             this._moveStart = null;
             this.canvasWrap.style.cursor = 'move';
@@ -340,12 +342,10 @@ export const inputMixin = {
             return;
         }
 
-        // Select marquee finalize
         if (this.tool === 'select' && this._selectDrag) {
             const pt = this._getCanvasPoint(e);
             const r = this._normalizeRect(
-                this._selectDrag.startX, this._selectDrag.startY,
-                pt.x, pt.y
+                this._selectDrag.startX, this._selectDrag.startY, pt.x, pt.y
             );
             if (r.w < 3 || r.h < 3) {
                 this._selection = null;
@@ -358,12 +358,12 @@ export const inputMixin = {
             return;
         }
 
-        // Curve phase 1 → 2
         if (this.tool === 'shape' && this.shape === 'curve' && this._curveState && this._curveState.phase === 1) {
             const c = this._curveState;
             const dist = Math.hypot(c.x2 - c.x1, c.y2 - c.y1);
             if (dist < 3) {
                 this._curveState = null;
+                this._isDrawing = false;
                 this.overlayCtx.clearRect(0, 0, this.CANVAS_W, this.CANVAS_H);
                 return;
             }
@@ -375,13 +375,12 @@ export const inputMixin = {
             return;
         }
 
-        // Shape finalize
         if (this.tool === 'shape' && this._shapeStart) {
             const pt = this._getCanvasPoint(e);
             const shape = {
                 type: 'shape', shape: this.shape,
                 x1: this._shapeStart.x, y1: this._shapeStart.y,
-                x2: Math.round(pt.x), y2: Math.round(pt.y),
+                x2: snapCoord(pt.x, this.shape), y2: snapCoord(pt.y, this.shape),
                 color: this.color, size: this.size,
                 opacity: this.opacity, fill: false,
             };
@@ -389,25 +388,36 @@ export const inputMixin = {
             this._isDrawing = false;
             this.overlayCtx.clearRect(0, 0, this.CANVAS_W, this.CANVAS_H);
 
-            // Line: direct commit
             if (this.shape === 'line') {
-                const mir = applySymmetryToStroke(shape, this.symmetry, this.CANVAS_W, this.CANVAS_H);
-                for (const m of mir) drawShape(this.ctx, m);
-                this._strokes.push(mir);
-                this._redoStack = [];
-                this._dirty = true;
-                this._setStatus(`${this._strokes.length} thao tác`);
+                const layer = this._getActiveLayer();
+                if (layer) {
+                    const mir = applySymmetryToStroke(shape, this.symmetry, this.CANVAS_W, this.CANVAS_H);
+                    const pad = shape.size / 2 + 3;
+                    let box = null;
+                    for (const m of mir) {
+                        box = this._unionRect(box, {
+                            x: Math.min(m.x1, m.x2) - pad, y: Math.min(m.y1, m.y2) - pad,
+                            w: Math.abs(m.x2 - m.x1) + pad * 2, h: Math.abs(m.y2 - m.y1) + pad * 2,
+                        });
+                    }
+                    const rect = this._clampRect(box);
+                    if (rect) {
+                        const before = this._cropCanvas(layer.canvas, rect.x, rect.y, rect.w, rect.h);
+                        for (const m of mir) drawShape(layer.ctx, m);
+                        const after = this._cropCanvas(layer.canvas, rect.x, rect.y, rect.w, rect.h);
+                        this._pushPatch(layer, rect, before, after);
+                        this._renderComposite();
+                    }
+                }
                 return;
             }
 
-            // Rect/Ellipse: float
             if (Math.abs(shape.x2 - shape.x1) < 2 && Math.abs(shape.y2 - shape.y1) < 2) return;
             const ok = this._createFloatingFromShape(shape);
             if (ok) this._setStatus('Kéo để di chuyển — Kéo ⚪ để xoay — Space/Enter để đặt');
             return;
         }
 
-        // Pan end
         if (this._isPanning) {
             this._isPanning = false;
             this._panStart = null;
@@ -415,30 +425,8 @@ export const inputMixin = {
             return;
         }
 
-        // Brush / Eraser finalize
         if (!this._isDrawing) return;
-        this._isDrawing = false;
-        this._pendingPointerQueue = [];
-
-        if (this._currentStroke && this._currentStroke.points.length > 0) {
-            if (this.tool !== 'eraser') this._applyTaper(this._currentStroke);
-            const mir = applySymmetryToStroke(this._currentStroke, this.symmetry, this.CANVAS_W, this.CANVAS_H);
-
-            if (this.tool !== 'eraser') {
-                this.overlayCtx.clearRect(0, 0, this.CANVAS_W, this.CANVAS_H);
-                for (const m of mir) {
-                    if (m.points.length === 1) drawBrushDot(this.ctx, m.points[0], m);
-                    else drawSmoothPath(this.ctx, m.points, m);
-                }
-            }
-            this._strokes.push(mir);
-            this._redoStack = [];
-            this._dirty = true;
-            this._setStatus(`${this._strokes.length} thao tác`);
-        }
-        this._currentStroke = null;
-        this._lastPointerPos = null;
-        this._lastRawPoint = null;
-        this._stabilizedPoint = null;
+        this._finishStroke();
+        this._strokePointerId = null;
     },
 };

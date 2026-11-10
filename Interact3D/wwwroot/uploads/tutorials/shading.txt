@@ -1,0 +1,40 @@
+﻿# ĐỔ BÓNG VÀ ÁNH SÁNG
+
+## 1. Nguồn sáng
+- LUÔN đặt 1 nguồn sáng chính duy nhất (trừ khi có lý do)
+- Góc 45° trên-trái hoặc trên-phải là phổ biến nhất
+- Ánh sáng phụ (fill light) yếu hơn ở phía đối diện để tránh bóng đen tuyệt đối
+
+## 2. 4 tầng sáng tối trên 1 vật thể
+1. **Highlight** — điểm sáng nhất, nơi ánh sáng chiếu trực tiếp
+2. **Mid-tone** — màu gốc của vật
+3. **Core shadow** — vùng tối nhất trên vật, sát ranh giới với bóng đổ
+4. **Reflected light** — ánh sáng phản chiếu từ mặt sàn, làm sáng lại vùng tối
+5. **Cast shadow** — bóng đổ xuống mặt phẳng
+
+## 3. Hình dạng cơ bản
+- **Sphere**: highlight hình oval, core shadow hình lưỡi liềm, cast shadow oval dài
+- **Cube**: mỗi mặt 1 tông khác nhau, cạnh sắc
+- **Cylinder**: highlight dài theo trục, shadow cong theo hình trụ
+
+## 4. Gradient (chuyển tông)
+- Luôn chuyển từ từ, không nhảy tông đột ngột
+- Dùng bút chì mềm (2B-4B) + tay nhẹ để tạo gradient mượt
+- Layer nhiều lớp mỏng thay vì 1 lớp đậm
+
+## 5. Highlight
+- Chỉ 1 highlight chính, 1-2 highlight phụ nhỏ
+- Highlight trên vật liệu bóng (kim loại, thuỷ tinh) → sắc, rõ
+- Highlight trên vật liệu mờ (vải, gỗ) → mềm, tản
+
+## 6. Shadow theo màu
+- Không dùng đen tuyền (#000) cho shadow
+- Shadow = màu gốc + tối hơn + shift sang màu bổ trợ
+  VD: da cam → shadow nâu tím
+- Highlight = màu gốc + sáng hơn + shift sang vàng
+
+## 7. Lỗi thường gặp
+- Bóng đen tuyệt đối → mất khối
+- Highlight quá to → trông như đồ nhựa
+- Không có reflected light → vật dán chặt vào nền
+- Đổ bóng lung tung → rối mắt

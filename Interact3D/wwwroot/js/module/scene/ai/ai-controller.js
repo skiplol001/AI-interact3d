@@ -7,12 +7,12 @@ import {
     summarizeSceneAround, errorToUserMessage, showPopup
 } from './ai-shared.js?v=21';
 import { logInput, logDecision, logSuccess, logBail, logError, logEmptyResponse } from './ai-debug.js?v=12';
-import { NOT_COMMAND_MSG } from './ai-command/ai-command-config.js?v=15';
-import { localParseCommand, vn } from './ai-command/ai-command-parser.js?v=13';
-import { planWithAI } from './ai-command/ai-command-planner.js?v=17'; // ⭐ Update v=17
-import { runPlan } from './ai-command/ai-command-executor.js?v=12';
-import { CURRENT_TOOLS } from './ai-command/ai-command-handlers.js?v=15';
-import { scoreInjectionAttempt } from './ai-chat/ai-chat-helpers.js?v=15'; // ⭐ Import Guard
+import { NOT_COMMAND_MSG } from '../command/ai-command-config.js?v=15';
+import { localParseCommand, vn } from '../command/ai-command-parser.js?v=13';
+import { planWithAI } from '../command/ai-command-planner.js?v=17';
+import { runPlan } from '../command/ai-command-executor.js?v=12';
+import { CURRENT_TOOLS } from '../command/ai-command-handlers.js?v=15';
+import { scoreInjectionAttempt } from '../chat/ai-chat-helpers.js?v=15';
 
 const COMMAND_VOCAB = /\b(di|chay|quay|xoay|nhat|lay|cam|dat|tha|xoa|tao|sinh|them|doi|thay|dem|xep|chong|luu|ve|dung|nhin|zoom|focus|mang|dua|nhac|bo|dich|teleport|spawn|walk|turn|stop|hop|box|b\d+|model|nhan vat|lui|tien|nang|ha|len|xuong|sang|phai|trai|truoc|sau|camera)\b/;
 

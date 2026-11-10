@@ -7,8 +7,6 @@ export async function savageSequence(self) {
     const ctrl = self.ctrl;
     if (!ctrl) return;
 
-    await self._waitForRockExplosion();
-
     if (window.emotionCtrl) window.emotionCtrl.trigger('dismissing', { force: true });
     await self._delay(800);
 
@@ -44,7 +42,6 @@ export async function savageSequence(self) {
     self._showLine(pickLine(SEQ_LINES.savage.beforeMagic), 'angry');
     await self._delay(600);
 
-    // ⭐ FIX: Wrap barrage với timeout 6s để tránh treo
     if (window.vfxSystem?.createFireballBarrage) {
         try {
             await Promise.race([

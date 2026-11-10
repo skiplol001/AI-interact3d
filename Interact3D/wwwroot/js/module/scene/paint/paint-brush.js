@@ -1,30 +1,45 @@
 ﻿// ═══════════════════════════════════════════════════════════════
-// paint-brush.js — v2 (No eraser multiplier — uses raw size)
+// paint-brush.js — v5 (Adaptive Smoothing · Anti-aliasing)
 // ═══════════════════════════════════════════════════════════════
 
 const VELOCITY_MAX = 40;
 const VELOCITY_MIN = 0.5;
-const STABILIZER_ALPHA_BASE = 1.5;
+const STABILIZER_BASE = 1.2;
 const TAPER_MIN_FACTOR = 0.15;
 
 const _clamp = (v, a, b) => v < a ? a : (v > b ? b : v);
 
 export const brushMixin = {
-    // ⭐ Bỏ hoàn toàn mult/min — eraser dùng thẳng size
     _getEffectiveSize() {
         return this.size;
     },
 
+    // ⭐ Làm mượt nét thích ứng: nhẹ khi vẽ chậm (mượt), bám sát khi vẽ nhanh (không trễ)
     _stabilize(rawPt) {
         const strength = this.stabilizer;
         if (strength <= 0 || !this._stabilizedPoint) {
             this._stabilizedPoint = { x: rawPt.x, y: rawPt.y };
             return { x: rawPt.x, y: rawPt.y };
         }
-        const alpha = 1 / (1 + strength * STABILIZER_ALPHA_BASE);
-        this._stabilizedPoint.x += (rawPt.x - this._stabilizedPoint.x) * alpha;
-        this._stabilizedPoint.y += (rawPt.y - this._stabilizedPoint.y) * alpha;
-        return { x: this._stabilizedPoint.x, y: this._stabilizedPoint.y };
+        const sp = this._stabilizedPoint;
+        const dx = rawPt.x - sp.x;
+        const dy = rawPt.y - sp.y;
+        const d = Math.hypot(dx, dy);
+
+        // Hệ số alpha: khi vẽ chậm (d nhỏ) thì alpha nhỏ -> mượt hơn
+        // khi vẽ nhanh (d lớn) thì alpha lớn -> bám sát
+        const base = 1 / (1 + strength * STABILIZER_BASE);
+        const alpha = Math.min(1, base + d * 0.012);
+
+        sp.x += dx * alpha;
+        sp.y += dy * alpha;
+        return { x: sp.x, y: sp.y };
+    },
+
+    // Áp lực bút (tablet / Apple Pencil / Surface Pen)
+    _pressureWidth(pressure, baseSize) {
+        const k = Math.pow(_clamp(pressure, 0, 1), 0.85);
+        return Math.max(0.5, baseSize * (0.12 + 0.88 * k));
     },
 
     _computeWidth(velocity, baseSize) {
@@ -39,7 +54,7 @@ export const brushMixin = {
 
     _applyTaper(stroke) {
         if (this.drawMode !== 'taper') return;
-        if (this.tool === 'eraser') return;
+        if (stroke.type === 'eraser') return;
         const pts = stroke.points;
         if (!pts || pts.length < 4) return;
 

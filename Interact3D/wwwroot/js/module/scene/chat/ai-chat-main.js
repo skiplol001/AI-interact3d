@@ -10,12 +10,10 @@ import {
     getUserMoodContext, getNameContext, getMemoryContext,
     setUserName, addMemory, getUserName,
     summarizeHistory
-} from '../ai-shared.js?v=21';
-
+} from '../ai/ai-shared.js?v=21';
 import {
     logInput, logDecision, logSuccess, logError, logEmptyResponse
-} from '../ai-debug.js?v=12';
-
+} from '../ai/ai-debug.js?v=12';
 import { CHAT_TOOLS, CHAT_MODES, COMMON_RULES, savageSpice, SAVAGE_RETRY_NOTE } from './ai-chat-config.js?v=6';
 import {
     detectLang, extractEmotionFromMessage, localParseChat, shouldIncludeScene,

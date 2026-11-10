@@ -1,5 +1,5 @@
 ﻿// ═══════════════════════════════════════════════════════════════
-// home-3d.js — Interact3D Main Scene (v16.29 — Interactive Paint)
+// home-3d.js — Interact3D Main Scene (v17.0 — Preloader)
 // ═══════════════════════════════════════════════════════════════
 import * as THREE from 'https://esm.sh/three@0.160.0';
 import { OrbitControls } from 'https://esm.sh/three@0.160.0/addons/controls/OrbitControls.js';
@@ -7,31 +7,31 @@ import { FBXLoader } from 'https://esm.sh/three@0.160.0/addons/loaders/FBXLoader
 import { GLTFLoader } from 'https://esm.sh/three@0.160.0/addons/loaders/GLTFLoader.js';
 
 // ═══ MODULES ═══
-import { CharacterController } from '../module/scene/character-controller.js?v=11';
-import { BoxSystem } from '../module/scene/box-system.js?v=32.1';
+import { CharacterController } from '../module/scene/character-controller.js?v=14';
+import { BoxSystem } from '../module/scene/box-system.js?v=41';
 import { ContextMenu } from '../module/scene/context-menu.js?v=11';
 import { GrabController } from '../module/scene/grab-controller.js?v=11';
 import { CameraWASD } from '../module/scene/camera-wasd.js?v=1';
 import { EmotionController } from '../module/scene/emotion-controller.js?v=34';
-import { createAITools } from '../module/scene/ai-command.js?v=13';
-import { initAICommandUI } from '../module/scene/ai-gemini.js?v=25';
+import { createAITools } from '../module/scene/ai/ai-command.js?v=15';
+import { initAICommandUI } from '../module/scene/ai/ai-gemini.js?v=25';
 import { SpringBoneManager } from '../module/scene/spring-bone.js?v=1';
 import { getPoseBox } from '../module/scene/pose-utils.js?v=1';
-import { askGroq, MODEL_CHAIN, showPopup } from '../module/scene/ai-shared.js?v=21';
+import { askGroq, MODEL_CHAIN, showPopup } from '../module/scene/ai/ai-shared.js?v=21';
 import { TrashCan } from '../module/scene/trash-can.js?v=1';
-import { initAIReaction } from '../module/scene/ai-reaction.js?v=15';
+import { initAIReaction } from '../module/scene/ai/ai-reaction.js?v=15';
 import { InteractionSystem } from '../module/scene/interaction-system.js?v=27';
-import { ReactiveEmotes } from '../module/scene/reactive-emotes.js?v=3';
-import { IdleEvents } from '../module/scene/idle-events.js?v=4';
-import { ActionDirector } from '../module/scene/action-director.js?v=9';
-import { VFXSystem } from '../module/scene/vfx-system.js?v=37';
+import { ReactiveEmotes } from '../module/scene/ai/reactive-emotes.js?v=3';
+import { IdleEvents } from '../module/scene/ai/idle-events.js?v=4';
+import { ActionDirector } from '../module/scene/skills/action-director.js?v=9';
+import { VFXSystem } from '../module/scene/vfx-system.js?v=39';
 import { MinigameRPS } from '../module/scene/minigame-rps.js?v=1';
-import { SlingshotSystem } from '../module/scene/slingshot-system.js?v=56';
-import { getMood } from '../module/scene/ai-chat/ai-mood.js?v=2';
+import { SlingshotSystem } from '../module/scene/slingshot-system.js?v=62';
+import { getMood } from '../module/scene/chat/ai-mood.js?v=2';
 import { FaceController } from '../module/scene/face-controller.js?v=22';
-import { PaintController } from '../module/scene/paint-mode.js?v=10' // ⭐ UPDATE v=6
-import { handlePaintDone } from '../module/scene/paint-reactions.js?v=5'; // ⭐ UPDATE v=5
-import { BuildController } from '../module/scene/build-mode.js?v=28';
+import { PaintController } from '../module/scene/paint/paint-mode.js?v=19.1';
+import { handlePaintDone } from '../module/scene/paint/paint-reactions.js?v=5';
+import { BuildController } from '../module/scene/build/build-mode.js?v=29';
 import { initHouseManager } from '../module/scene/house-manager.js?v=3.1';
 
 window.THREE = THREE;
@@ -49,8 +49,69 @@ const btnResetPos = document.getElementById('btn-reset-pos');
 const btnClearBoxes = document.getElementById('btn-clear-boxes');
 const btnSpawnTest = document.getElementById('btn-spawn-test');
 
+// ═══ PRELOADER UI ═══
+const loadingOverlay = document.createElement('div');
+loadingOverlay.id = 'loading-overlay';
+loadingOverlay.style.cssText = `
+    position: fixed; inset: 0; background: #0f172a; z-index: 999999;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    font-family: 'Segoe UI', sans-serif; color: #fff; transition: opacity 0.5s ease;
+`;
+loadingOverlay.innerHTML = `
+    <h1 style="font-size: 28px; font-weight: 700; color: #38bdf8; margin-bottom: 20px; letter-spacing: 2px;">Interact3D</h1>
+    <div style="width: 300px; height: 8px; background: #1e293b; border-radius: 4px; overflow: hidden; margin-bottom: 12px;">
+        <div id="loading-bar" style="width: 0%; height: 100%; background: linear-gradient(90deg, #38bdf8, #8b5cf6); transition: width 0.2s;"></div>
+    </div>
+    <div id="loading-text" style="font-size: 13px; color: #94a3b8;">Đang tải không gian 3D...</div>
+`;
+document.body.appendChild(loadingOverlay);
+
+function setLoadingProgress(percent, text) {
+    const bar = document.getElementById('loading-bar');
+    const txt = document.getElementById('loading-text');
+    if (bar) bar.style.width = `${percent}%`;
+    if (txt && text) txt.innerText = text;
+}
+
+// ═══ GLOBALS ═══
 let _toolBadgeEl = null;
 let _activeTool = 'navigate';
+let currentModelId = 1;
+let currentCharacter = null;
+let mixer = null;
+let characterCtrl = null;
+let emotionCtrl = null;
+let faceCtrl = null;
+let boxSystem = null;
+let grabCtrl = null;
+let contextMenu = null;
+let interactionSystem = null;
+let reactiveEmotes = null;
+let idleEvents = null;
+let actionDirector = null;
+let vfxSystem = null;
+let minigameRPS = null;
+let slingshotSystem = null;
+let paintController = null;
+let buildController = null;
+let springBoneMgr = new SpringBoneManager();
+
+window.availableModels = [];
+
+const _idleState = { lastInteractionTs: Date.now(), lastYawnTs: 0, yawnCooldownMs: 5 * 60 * 1000, idleThresholdMs: 120 * 1000 };
+const _boxSpawnTracker = { recentTs: [], windowMs: 5000, threshold: 5, cooldownMs: 30000, lastReactionTs: 0 };
+function _markInteraction() {
+    _idleState.lastInteractionTs = Date.now();
+    if (window.reactiveEmotes) window.reactiveEmotes.registerActivity();
+    if (window.idleEvents) window.idleEvents.registerActivity();
+}
+function _trackBoxSpawn() {
+    const now = Date.now();
+    _boxSpawnTracker.recentTs.push(now);
+    const cutoff = now - _boxSpawnTracker.windowMs;
+    _boxSpawnTracker.recentTs = _boxSpawnTracker.recentTs.filter(t => t >= cutoff);
+    return _boxSpawnTracker.recentTs.length;
+}
 
 function _initToolBadge() {
     if (_toolBadgeEl) return;
@@ -182,43 +243,6 @@ function prepTex(tex, srgb = false) {
     return tex;
 }
 const aiGirlDiffuse = prepTex(textureLoader.load(aiGirlTexPath + 'AiGirl_Diffuse.png'), true);
-
-let currentModelId = 1;
-let currentCharacter = null;
-let mixer = null;
-let characterCtrl = null;
-let emotionCtrl = null;
-let faceCtrl = null;
-let boxSystem = null;
-let grabCtrl = null;
-let contextMenu = null;
-let interactionSystem = null;
-let reactiveEmotes = null;
-let idleEvents = null;
-let actionDirector = null;
-let vfxSystem = null;
-let minigameRPS = null;
-let slingshotSystem = null;
-let paintController = null;
-let buildController = null;
-let springBoneMgr = new SpringBoneManager();
-
-window.availableModels = [];
-
-const _idleState = { lastInteractionTs: Date.now(), lastYawnTs: 0, yawnCooldownMs: 5 * 60 * 1000, idleThresholdMs: 120 * 1000 };
-const _boxSpawnTracker = { recentTs: [], windowMs: 5000, threshold: 5, cooldownMs: 30000, lastReactionTs: 0 };
-function _markInteraction() {
-    _idleState.lastInteractionTs = Date.now();
-    if (window.reactiveEmotes) window.reactiveEmotes.registerActivity();
-    if (window.idleEvents) window.idleEvents.registerActivity();
-}
-function _trackBoxSpawn() {
-    const now = Date.now();
-    _boxSpawnTracker.recentTs.push(now);
-    const cutoff = now - _boxSpawnTracker.windowMs;
-    _boxSpawnTracker.recentTs = _boxSpawnTracker.recentTs.filter(t => t >= cutoff);
-    return _boxSpawnTracker.recentTs.length;
-}
 
 const YAWN_LOCAL = {
     gentle: ['Haizz... chán quá... bạn đâu rồi? 🥺', 'Ơ... mình buồn ngủ ghê... Mochi cũng ngủ rồi... 😴', 'Ha... mình ngồi đây một mình lâu quá rồi đó... 🌸', 'Ơ... bạn ơi, làm gì đi, mình chán quá... 😢', 'Haizz, tự nhiên thấy cô đơn ghê... 🥺', 'Mình ngáp ruồi rồi nè... 😴', 'Ơ... có ai không... buồn ngủ quá... 😢', 'Huhu, mình ngồi không chán quá đi mất... 🌸'],
@@ -578,9 +602,6 @@ window.scene = scene;
 window.camera = camera;
 window.controls = controls;
 
-boxSystem.addBox(2, -1, 0xf59e0b);
-boxSystem.addBox(-2, 1.5, 0x10b981);
-
 const raycaster = new THREE.Raycaster();
 function screenToNDC(e) { const rect = canvas.getBoundingClientRect(); return new THREE.Vector2(((e.clientX - rect.left) / rect.width) * 2 - 1, -((e.clientY - rect.top) / rect.height) * 2 + 1); }
 
@@ -761,7 +782,6 @@ function animate() {
     }
     renderer.render(scene, camera);
 }
-animate();
 
 function updateHud() { if (!currentCharacter || !hudCoords) return; hudCoords.innerText = `${currentCharacter.position.x.toFixed(2)}, ${currentCharacter.position.z.toFixed(2)}`; }
 window.addEventListener('resize', () => { camera.aspect = window.innerWidth / window.innerHeight; camera.updateProjectionMatrix(); renderer.setSize(window.innerWidth, window.innerHeight); });
@@ -817,8 +837,58 @@ function hideLegacyBoxPanel() {
     console.log('[UI] Đã ẩn bảng đặt khối cũ (không tạo nút toggle nữa).');
 }
 
+// ═══════════════════════════════════════════════════════════════
+// ⭐ INIT FLOW (PRELOADER)
+// ═══════════════════════════════════════════════════════════════
+async function init() {
+    try {
+        setLoadingProgress(10, 'Đang tải ánh sáng & môi trường...');
+        await new Promise(r => setTimeout(r, 50));
+
+        setLoadingProgress(30, 'Đang tải Box System...');
+        // BoxSystem đã được khởi tạo ở scope ngoài, nhưng ta sẽ init nó ở đây nếu cần
+        // (Trong file này nó đã được khởi tạo ở scope ngoài, ta giữ nguyên)
+
+        setLoadingProgress(50, 'Đang tải VFX...');
+        vfxSystem = new VFXSystem(scene, camera);
+        window.vfxSystem = vfxSystem;
+        if (vfxSystem.warmup) await vfxSystem.warmup();
+
+        setLoadingProgress(70, 'Đang tải Mô hình Nhân vật...');
+        await fetchModels(); // Hàm này gọi loadCharacterModel bên trong
+
+        setLoadingProgress(85, 'Đang khởi tạo Hệ thống Xây dựng & Vẽ...');
+
+        buildController = new BuildController(scene, camera, canvas, boxSystem, {});
+        window.buildController = buildController;
+        if (buildController.warmup) await buildController.warmup();
+
+        paintController = new PaintController({});
+        window.paintController = paintController;
+        if (paintController.warmup) await paintController.warmup();
+
+        // Các controller khác đã được tạo trong loadCharacterModel
+        // ...
+
+        setLoadingProgress(95, 'Đang khởi động AI...');
+        // AI đã được khởi tạo trong loadCharacterModel
+
+        setLoadingProgress(100, 'Sẵn sàng!');
+        await new Promise(r => setTimeout(r, 300));
+        loadingOverlay.style.opacity = '0';
+        setTimeout(() => loadingOverlay.remove(), 500);
+
+        animate(); // Bắt đầu loop
+
+    } catch (err) {
+        console.error('Lỗi khởi tạo App:', err);
+        setLoadingProgress(100, 'Lỗi khởi tạo! Xem Console (F12).');
+    }
+}
+
 initMoodHUD();
 hideLegacyBoxPanel();
 _initToolBadge();
-fetchModels();
-console.log('🚀 Interact3D Scene initialized (v16.29 — Interactive Paint)');
+
+// Khởi động App
+init();
