@@ -6,7 +6,7 @@
 import { askGroq, MODEL_CHAIN, showPopup } from './ai-shared.js?v=21';
 import { getMood } from '../chat/ai-mood.js?v=2'; 
 
-const MODES = ['gentle', 'normal];
+const MODES = ['gentle', 'normal'];
 const HISTORY_MAX = 2;
 const ALIAS = { hanging_demand: 'hanging_complain' };
 const AI_CALL_CHANCE = 0.01;
