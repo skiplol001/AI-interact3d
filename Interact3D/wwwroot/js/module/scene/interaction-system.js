@@ -53,9 +53,9 @@ const ATTRACT_REFUSE_QUOTES = {
 function getCurrentMode() {
     try {
         const w = window.__currentChatMode;
-        if (['gentle', 'normal', 'savage'].includes(w)) return w;
+        if (['gentle', 'normal'].includes(w)) return w;
         const m = localStorage.getItem('ai_last_mode');
-        return ['gentle', 'normal', 'savage'].includes(m) ? m : 'normal';
+        return ['gentle', 'normal'].includes(m) ? m : 'normal';
     } catch { return 'normal'; }
 }
 

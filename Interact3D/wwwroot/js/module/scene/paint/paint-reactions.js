@@ -6,8 +6,7 @@ import { logDecision, logError } from '../ai/ai-debug.js?v=12';
 import { knowledgeBase } from '../agent/knowledge-base.js?v=1';
 import { generateSvgGuideline } from '../agent/ai-artist-agent.js?v=1';
 
-const MODES = ['gentle', 'normal', 'savage'];
-
+const MODES = ['gentle', 'normal'];
 function _getMode() {
     try {
         const w = window.__currentChatMode;

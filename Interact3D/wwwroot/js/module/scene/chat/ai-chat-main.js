@@ -151,7 +151,7 @@ export async function handleChat(aiTools, userText, options = {}) {
     const onSay = options.onSay || (() => { });
     const history = options.history || [];
     const savageToggle = options.savageMode === true;
-    const uiMode = ['gentle', 'normal', 'savage'].includes(options.mode) ? options.mode : 'normal';
+    const uiMode = ['gentle', 'normal'].includes(options.mode) ? options.mode : 'normal';
 
     const t0 = performance.now();
     logInput('chat', userText);
